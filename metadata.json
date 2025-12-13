@@ -1,0 +1,5 @@
+{
+  "name": "EggMonitor AI Dashboard",
+  "description": "A comprehensive poultry analytics dashboard featuring real-time data visualization, statistical analysis, PDF reporting, and an AI-powered expert assistant using Gemini.",
+  "requestFramePermissions": []
+}
