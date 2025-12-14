@@ -52,6 +52,8 @@ export const sendMessageToGemini = async (
 
     } catch (error) {
         console.error("Gemini API Error:", error);
-        throw new Error("Error al comunicarse con el asistente.");
+        // Devolvemos un mensaje amigable en lugar de romper la promesa abruptamente si es posible,
+        // pero lanzar el error permite al UI manejar el estado de error.
+        throw error;
     }
 };
