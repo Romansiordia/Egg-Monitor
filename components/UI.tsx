@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { 
-    X, CheckCircle, ZoomIn, ArrowUpRight, ArrowDownRight, Egg, LucideIcon, Upload 
+    X, CheckCircle, ZoomIn, ArrowUpRight, ArrowDownRight, Egg, LucideIcon, Upload, LogOut 
 } from 'lucide-react';
 import { 
     ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid 
@@ -243,5 +243,16 @@ export const SidebarItem: React.FC<{ icon: LucideIcon; label: string; active: bo
     >
         <Icon size={20} />
         <span>{label}</span>
+    </button>
+);
+
+// --- Sidebar Logout Button ---
+export const SidebarLogout: React.FC<{ onClick: () => void }> = ({ onClick }) => (
+    <button 
+        onClick={onClick}
+        className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl transition-all duration-200 mt-2"
+    >
+        <LogOut size={20} />
+        <span>Cerrar Sesión</span>
     </button>
 );

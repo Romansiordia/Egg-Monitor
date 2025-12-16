@@ -9,9 +9,10 @@ import {
 import { generateMockData, calculateAllStats, getHistogramData } from './utils/dataUtils';
 import { sendMessageToGemini } from './services/geminiService';
 import { EggData, ChartConfig, MetricConfig, TabType, ChatMessageData } from './types';
-import { Modal, ChartModal, CountCard, MetricCard, SidebarItem, EggMonitorLogo } from './components/UI';
+import { Modal, ChartModal, CountCard, MetricCard, SidebarItem, EggMonitorLogo, SidebarLogout } from './components/UI';
 import { DashboardChart } from './components/Charts';
 import { ChatBox } from './components/ChatInterface';
+import { LoginScreen } from './components/LoginScreen';
 
 // Hook for external scripts (PDF generation)
 const useScript = (url: string) => {
@@ -53,8 +54,40 @@ const METRIC_CONFIG: MetricConfig = {
 };
 
 const INITIAL_DATA = generateMockData();
+const AUTH_KEY = 'egg_monitor_auth';
+const DEFAULT_ACCESS_CODE = 'Tic@8lava$'; // Contraseña por defecto actualizada
 
 export default function App() {
+    // --- Auth State ---
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [authChecking, setAuthChecking] = useState(true);
+
+    // Check auth on load
+    useEffect(() => {
+        const storedAuth = localStorage.getItem(AUTH_KEY);
+        if (storedAuth === 'true') {
+            setIsAuthenticated(true);
+        }
+        setAuthChecking(false);
+    }, []);
+
+    const handleLogin = (password: string) => {
+        // En producción en Vercel, puedes usar process.env.VITE_ACCESS_CODE para ocultarlo
+        const accessCode = (import.meta as any).env?.VITE_ACCESS_CODE || DEFAULT_ACCESS_CODE;
+        if (password === accessCode) {
+            localStorage.setItem(AUTH_KEY, 'true');
+            setIsAuthenticated(true);
+            return true;
+        }
+        return false;
+    };
+
+    const handleLogout = () => {
+        localStorage.removeItem(AUTH_KEY);
+        setIsAuthenticated(false);
+        setChatHistory([]); // Limpiar chat al salir
+    };
+
     // PDF Library Scripts
     const jspdfStatus = useScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
     const html2canvasStatus = useScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
@@ -272,10 +305,20 @@ export default function App() {
         });
     };
 
+    // --- Render Logic ---
+
+    if (authChecking) {
+        return <div className="h-screen w-full flex items-center justify-center bg-slate-50"><Loader className="animate-spin text-blue-600" /></div>;
+    }
+
+    if (!isAuthenticated) {
+        return <LoginScreen onLogin={handleLogin} />;
+    }
+
     return (
         <div className="flex min-h-screen bg-slate-50 font-sans text-slate-800">
             {/* --- Sidebar --- */}
-            <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-white text-slate-700 transform transition-transform duration-300 ease-in-out ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 border-r border-slate-200`}>
+            <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-white text-slate-700 transform transition-transform duration-300 ease-in-out ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 border-r border-slate-200 flex flex-col`}>
                 <div className="p-6 flex items-center gap-3 border-b border-slate-200">
                     <EggMonitorLogo size={42} />
                     <div>
@@ -287,46 +330,47 @@ export default function App() {
                     </div>
                 </div>
 
-                <nav className="p-4 space-y-2">
+                <nav className="p-4 space-y-2 flex-grow overflow-y-auto">
                     <p className="px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Vistas</p>
                     <SidebarItem icon={Activity} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
                     <SidebarItem icon={BarChart2} label="Histogramas" active={activeTab === 'histograms'} onClick={() => setActiveTab('histograms')} />
                     <SidebarItem icon={TrendingUp} label="Promedios Mensuales" active={activeTab === 'monthly-averages'} onClick={() => setActiveTab('monthly-averages')} /> 
                     <SidebarItem icon={FileText} label="Resumen Datos" active={activeTab === 'summary'} onClick={() => setActiveTab('summary')} />
                     <SidebarItem icon={MessageSquare} label="Asistente Avícola" active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} />
+                    
+                    <div className="pt-4 mt-2 border-t border-slate-200">
+                        <p className="px-4 text-xs font-semibold text-slate-700 uppercase tracking-wider mb-4">Filtros ({filteredData.length})</p>
+                        <div className="space-y-4 px-2">
+                            <div>
+                                <label className="block text-xs mb-1 text-slate-700 flex items-center gap-1"><Calendar size={12}/> Rango de Fechas</label>
+                                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-slate-100 border border-slate-300 rounded text-xs text-slate-900 p-2 mb-2 focus:ring-blue-500 focus:border-blue-500" />
+                                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-slate-100 border border-slate-300 rounded text-xs text-slate-900 p-2 focus:ring-blue-500 focus:border-blue-500" />
+                            </div>
+                            {['Granja', 'Caseta', 'Edad', 'Estirpe'].map((label, idx) => {
+                            const val = [selectedFarm, selectedShed, selectedAge, selectedBreed][idx];
+                            const setVal = [setSelectedFarm, setSelectedShed, setSelectedAge, setSelectedBreed][idx];
+                            const opts = [FARMS, SHEDS, AGES, BREEDS][idx];
+                            return (
+                                <div key={label}>
+                                    <label className="block text-xs mb-1 text-slate-700">{label}</label>
+                                    <select value={val} onChange={e => setVal(e.target.value)} className="w-full bg-slate-100 border border-slate-300 rounded text-sm text-slate-900 p-2 focus:ring-blue-500 focus:border-blue-500">
+                                        {opts.map(o => <option key={o} value={o}>{o}</option>)}
+                                    </select>
+                                </div>
+                            );
+                            })}
+                        </div>
+                    </div>
                 </nav>
 
-                <div className="p-4 border-t border-slate-200">
-                    <p className="px-4 text-xs font-semibold text-slate-700 uppercase tracking-wider mb-4">Filtros ({filteredData.length})</p>
-                    <div className="space-y-4 px-2">
-                        <div>
-                            <label className="block text-xs mb-1 text-slate-700 flex items-center gap-1"><Calendar size={12}/> Rango de Fechas</label>
-                            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-slate-100 border border-slate-300 rounded text-xs text-slate-900 p-2 mb-2 focus:ring-blue-500 focus:border-blue-500" />
-                            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-slate-100 border border-slate-300 rounded text-xs text-slate-900 p-2 focus:ring-blue-500 focus:border-blue-500" />
-                        </div>
-                        {['Granja', 'Caseta', 'Edad', 'Estirpe'].map((label, idx) => {
-                           const val = [selectedFarm, selectedShed, selectedAge, selectedBreed][idx];
-                           const setVal = [setSelectedFarm, setSelectedShed, setSelectedAge, setSelectedBreed][idx];
-                           const opts = [FARMS, SHEDS, AGES, BREEDS][idx];
-                           return (
-                               <div key={label}>
-                                   <label className="block text-xs mb-1 text-slate-700">{label}</label>
-                                   <select value={val} onChange={e => setVal(e.target.value)} className="w-full bg-slate-100 border border-slate-300 rounded text-sm text-slate-900 p-2 focus:ring-blue-500 focus:border-blue-500">
-                                       {opts.map(o => <option key={o} value={o}>{o}</option>)}
-                                   </select>
-                               </div>
-                           );
-                        })}
-                    </div>
-                </div>
-                
-                 <div className="absolute bottom-0 w-full p-4 bg-white border-t border-slate-200">
-                    <label className="flex items-center gap-2 cursor-pointer bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-lg justify-center transition-colors">
+                 <div className="p-4 bg-white border-t border-slate-200 flex-shrink-0">
+                    <label className="flex items-center gap-2 cursor-pointer bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-lg justify-center transition-colors mb-2">
                         <Upload size={18} />
                         <span className="text-sm font-medium">Subir CSV</span>
                         <input type="file" accept=".csv" onChange={handleFileChange} className="hidden" />
                     </label>
-                    <p className="text-xs text-center mt-2 text-slate-500 truncate">{fileName}</p>
+                    <p className="text-xs text-center mb-2 text-slate-500 truncate">{fileName}</p>
+                    <SidebarLogout onClick={handleLogout} />
                 </div>
             </aside>
 
