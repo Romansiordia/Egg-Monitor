@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import { Download, ZoomIn, TrendingUp } from 'lucide-react';
 import { getHistogramData } from '../utils/dataUtils';
-import { MetricConfig } from '../types';
+import { MetricConfig, QualityStandardsConfig } from '../types';
 
 interface DashboardChartProps {
     title: string;
@@ -74,6 +74,84 @@ export const DashboardChart: React.FC<DashboardChartProps> = ({
                         </BarChart>
                     )}
                 </ResponsiveContainer>
+            </div>
+        </div>
+    );
+};
+
+// --- Gauge Chart for Report ---
+const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
+    const angleInRadians = ((angleInDegrees - 180) * Math.PI) / 180.0;
+    return {
+        x: centerX + radius * Math.cos(angleInRadians),
+        y: centerY + radius * Math.sin(angleInRadians),
+    };
+};
+
+const describeArc = (x: number, y: number, radius: number, startAngle: number, endAngle: number) => {
+    const start = polarToCartesian(x, y, radius, endAngle);
+    const end = polarToCartesian(x, y, radius, startAngle);
+    const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1';
+    return ['M', start.x, start.y, 'A', radius, radius, 0, largeArcFlag, 0, end.x, end.y].join(' ');
+};
+
+const getAngle = (value: number, min: number, max: number) => {
+    const clampedValue = Math.max(min, Math.min(value, max));
+    const percentage = (clampedValue - min) / (max - min);
+    return percentage * 180; // 0 to 180 degrees
+};
+
+interface GaugeChartProps {
+    metricKey: string;
+    value: number;
+    standards: QualityStandardsConfig;
+    metricConfig: MetricConfig;
+}
+
+export const GaugeChart: React.FC<GaugeChartProps> = ({ metricKey, value, standards, metricConfig }) => {
+    const standard = standards[metricKey];
+    if (!standard) return null;
+
+    const { min, max, ranges } = standard;
+    const { name, unit } = metricConfig[metricKey];
+
+    const angle = getAngle(value, min, max);
+    
+    const poorAngle = getAngle(ranges.poor[1], min, max);
+    const acceptableAngle = getAngle(ranges.acceptable[1], min, max);
+
+    const valueStatus = value < ranges.poor[1] ? 'Pobre' : value < ranges.acceptable[1] ? 'Aceptable' : 'Óptimo';
+    const statusColor = valueStatus === 'Pobre' ? '#ef4444' : valueStatus === 'Aceptable' ? '#eab308' : '#22c55e';
+
+    return (
+        <div className="flex flex-col items-center p-4 border border-slate-200 rounded-xl bg-slate-50/50">
+            <h4 className="text-sm font-bold text-slate-700 mb-2">{name}</h4>
+            <div className="w-full max-w-[200px]">
+                <svg viewBox="0 0 100 65" className="w-full">
+                    {/* Arcs */}
+                    <path d={describeArc(50, 50, 40, 0, poorAngle)} fill="none" stroke="#ef4444" strokeWidth="12" />
+                    <path d={describeArc(50, 50, 40, poorAngle, acceptableAngle)} fill="none" stroke="#eab308" strokeWidth="12" />
+                    <path d={describeArc(50, 50, 40, acceptableAngle, 180)} fill="none" stroke="#22c55e" strokeWidth="12" />
+                    
+                    {/* Needle */}
+                    <g transform={`rotate(${angle}, 50, 50)`}>
+                        <path d="M 50 50 L 50 12" stroke="#1e293b" strokeWidth="2" strokeLinecap="round" />
+                        <circle cx="50" cy="50" r="4" fill="#1e293b" />
+                    </g>
+                    
+                    {/* Text */}
+                    <text x="50" y="40" textAnchor="middle" className="text-xl font-bold fill-slate-800">
+                        {value.toFixed(2)}
+                    </text>
+                    <text x="50" y="52" textAnchor="middle" className="text-xs font-medium fill-slate-500">{unit}</text>
+                    
+                    <text x="10" y="60" textAnchor="start" className="text-[8px] font-medium fill-slate-400">{min}</text>
+                    <text x="90" y="60" textAnchor="end" className="text-[8px] font-medium fill-slate-400">{max}</text>
+                </svg>
+            </div>
+            <div className="mt-2 text-center">
+                <span className="text-xs text-slate-500">Diagnóstico:</span>
+                <span className="font-bold text-sm ml-1.5" style={{ color: statusColor }}>{valueStatus}</span>
             </div>
         </div>
     );

@@ -59,3 +59,34 @@ export const getHistogramData = (data: EggData[], key: string, bins = 12) => {
     });
     return histogram;
 };
+
+export const calculateMonthlyAverages = (data: EggData[], metricKeys: string[]) => {
+    if (data.length === 0) return [];
+    
+    const grouped: { [key: string]: any } = {};
+    
+    data.forEach(d => {
+        const monthKey = d.date.substring(0, 7); // YYYY-MM
+        if (!grouped[monthKey]) {
+            grouped[monthKey] = { count: 0, dateLabel: monthKey.replace('-', '/') };
+            metricKeys.forEach(key => { grouped[monthKey][key] = 0; });
+        }
+        grouped[monthKey].count++;
+        metricKeys.forEach(key => {
+            if (typeof d[key] === 'number') {
+                grouped[monthKey][key] += d[key] as number;
+            }
+        });
+    });
+    
+    const averages = Object.keys(grouped).map(monthKey => {
+        const totalCount = grouped[monthKey].count;
+        const avg: any = { month: monthKey, dateLabel: grouped[monthKey].dateLabel };
+        metricKeys.forEach(key => {
+            avg[key] = totalCount > 0 ? parseFloat((grouped[monthKey][key] / totalCount).toFixed(2)) : 0;
+        });
+        return avg;
+    });
+
+    return averages.sort((a: any, b: any) => new Date(a.month).getTime() - new Date(b.month).getTime());
+};

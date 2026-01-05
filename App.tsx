@@ -1,16 +1,16 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
 import { 
-  Activity, BarChart2, TrendingUp, FileText, MessageSquare, Menu, Calendar, Upload, Download, Loader, Egg, PieChart, ZoomIn 
+  Activity, BarChart2, TrendingUp, FileText, MessageSquare, Menu, Calendar, Upload, Download, Loader, Egg, PieChart, ZoomIn, ClipboardList 
 } from 'lucide-react';
 
-import { generateMockData, calculateAllStats, getHistogramData } from './utils/dataUtils';
+import { generateMockData, calculateAllStats, getHistogramData, calculateMonthlyAverages } from './utils/dataUtils';
 import { sendMessageToGemini } from './services/geminiService';
-import { EggData, ChartConfig, MetricConfig, TabType, ChatMessageData } from './types';
+import { EggData, ChartConfig, MetricConfig, TabType, ChatMessageData, QualityStandardsConfig } from './types';
 import { Modal, ChartModal, CountCard, MetricCard, SidebarItem, EggMonitorLogo, SidebarLogout } from './components/UI';
-import { DashboardChart } from './components/Charts';
+import { DashboardChart, GaugeChart } from './components/Charts';
 import { ChatBox } from './components/ChatInterface';
 import { LoginScreen } from './components/LoginScreen';
 
@@ -51,6 +51,14 @@ const METRIC_CONFIG: MetricConfig = {
     shellThickness: { name: 'Espesor', color: '#10b981', unit: 'mm', icon:  TrendingUp}, // Verde (Emerald 500)
     yolkColor: { name: 'Color Yema', color: '#eab308', unit: 'Escala', icon: PieChart }, // Amarillo (Yellow 500)
     haughUnits: { name: 'Unid. Haugh', color: '#a855f7', unit: 'HU', icon: BarChart2 }, // Morado (Purple 500)
+};
+
+const QUALITY_STANDARDS: QualityStandardsConfig = {
+    weight: { min: 50, max: 75, ranges: { poor: [50, 55], acceptable: [55, 65], optimal: [65, 75] } },
+    breakingStrength: { min: 2.5, max: 5.5, ranges: { poor: [2.5, 3.2], acceptable: [3.2, 4.5], optimal: [4.5, 5.5] } },
+    shellThickness: { min: 0.28, max: 0.45, ranges: { poor: [0.28, 0.33], acceptable: [0.33, 0.40], optimal: [0.40, 0.45] } },
+    yolkColor: { min: 6, max: 15, ranges: { poor: [6, 8], acceptable: [8, 12], optimal: [12, 15] } },
+    haughUnits: { min: 60, max: 100, ranges: { poor: [60, 72], acceptable: [72, 90], optimal: [90, 100] } }
 };
 
 const INITIAL_DATA = generateMockData();
@@ -143,32 +151,9 @@ export default function App() {
         });
     }, [dashboardData, selectedFarm, selectedShed, selectedAge, selectedBreed, startDate, endDate]);
 
-    // Monthly Averages
+    // Monthly Averages (Global)
     const monthlyAverageData = useMemo(() => {
-        const grouped: any = {};
-        filteredData.forEach(d => {
-            const monthKey = d.date.substring(0, 7); // YYYY-MM
-            if (!grouped[monthKey]) {
-                grouped[monthKey] = { count: 0, dateLabel: monthKey.replace('-', '/') };
-                Object.keys(METRIC_CONFIG).forEach(key => grouped[monthKey][key] = 0);
-            }
-            grouped[monthKey].count++;
-            Object.keys(METRIC_CONFIG).forEach(key => {
-                if (typeof d[key] === 'number') {
-                    grouped[monthKey][key] += d[key] as number;
-                }
-            });
-        });
-        
-        const averages = Object.keys(grouped).map(monthKey => {
-            const totalCount = grouped[monthKey].count;
-            const avg: any = { month: monthKey, dateLabel: grouped[monthKey].dateLabel };
-            Object.keys(METRIC_CONFIG).forEach(key => {
-                avg[key] = totalCount > 0 ? parseFloat((grouped[monthKey][key] / totalCount).toFixed(2)) : 0;
-            });
-            return avg;
-        });
-        return averages.sort((a: any, b: any) => new Date(a.month).getTime() - new Date(b.month).getTime());
+        return calculateMonthlyAverages(filteredData, Object.keys(METRIC_CONFIG));
     }, [filteredData]);
 
     // Global Averages
@@ -273,8 +258,11 @@ export default function App() {
             const imgData = canvas.toDataURL('image/png');
             // @ts-ignore
             const { jsPDF } = window.jspdf;
-            const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
-            const pdf = new jsPDF(orientation, 'px', [canvas.width, canvas.height]);
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'px',
+                format: [canvas.width, canvas.height]
+            });
             pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
             pdf.save(filename);
         } catch (error) {
@@ -305,8 +293,54 @@ export default function App() {
         });
     };
 
-    // --- Render Logic ---
+    // --- Report Specific Data ---
+    const METRIC_KEYS = useMemo(() => Object.keys(METRIC_CONFIG), []);
+    const uniqueShedsInFilter = useMemo(() => [...new Set(filteredData.map(d => d.shed).filter(Boolean))].sort(), [filteredData]);
 
+    const comparativeChartData = useMemo(() => {
+        return uniqueShedsInFilter.map(shed => {
+            const shedData = filteredData.filter(d => d.shed === shed);
+            const averages: { [key: string]: any } = { shed };
+            METRIC_KEYS.forEach(key => {
+                const stats = calculateAllStats(shedData, key);
+                averages[key] = parseFloat(stats.mean.toFixed(2));
+            });
+            return averages;
+        });
+    }, [filteredData, uniqueShedsInFilter, METRIC_KEYS]);
+
+    const comparativeStatsData = useMemo(() => {
+        return uniqueShedsInFilter.map(shed => {
+            const shedData = filteredData.filter(d => d.shed === shed);
+            const stats: { [key: string]: any } = { shed };
+            METRIC_KEYS.forEach(key => {
+                const result = calculateAllStats(shedData, key);
+                stats[`${key}_mean`] = result.mean.toFixed(2);
+                stats[`${key}_min`] = result.min.toFixed(2);
+                stats[`${key}_max`] = result.max.toFixed(2);
+                stats[`${key}_std`] = result.std.toFixed(2);
+            });
+            return stats;
+        });
+    }, [filteredData, uniqueShedsInFilter, METRIC_KEYS]);
+
+    // Report Highlight State & Logic
+    const [highlightMetric, setHighlightMetric] = useState(METRIC_KEYS[0]);
+    const [highlightConfig, setHighlightConfig] = useState<{ metricKey: string | null; criteria: 'best' | 'worst' | null; shed: string | null }>({ metricKey: null, criteria: null, shed: null });
+    
+    const handleHighlight = (key: string, criteria: 'best' | 'worst') => {
+        if (!key || comparativeChartData.length === 0) return;
+        const targetShed = comparativeChartData.reduce((prev, current) => {
+            if (criteria === 'best') return (current[key] > prev[key]) ? current : prev;
+            return (current[key] < prev[key]) ? current : prev;
+        });
+        setHighlightConfig({ metricKey: key, criteria, shed: targetShed.shed });
+    };
+
+    const clearHighlight = () => setHighlightConfig({ metricKey: null, criteria: null, shed: null });
+
+
+    // --- Render Logic ---
     if (authChecking) {
         return <div className="h-screen w-full flex items-center justify-center bg-slate-50"><Loader className="animate-spin text-blue-600" /></div>;
     }
@@ -337,6 +371,11 @@ export default function App() {
                     <SidebarItem icon={TrendingUp} label="Promedios Mensuales" active={activeTab === 'monthly-averages'} onClick={() => setActiveTab('monthly-averages')} /> 
                     <SidebarItem icon={FileText} label="Resumen Datos" active={activeTab === 'summary'} onClick={() => setActiveTab('summary')} />
                     <SidebarItem icon={MessageSquare} label="Asistente Avícola" active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} />
+                    
+                    <div className="pt-4 mt-2 border-t border-slate-200">
+                         <p className="px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Reportes</p>
+                         <SidebarItem icon={ClipboardList} label="Generar Reporte" active={activeTab === 'report'} onClick={() => setActiveTab('report')} />
+                    </div>
                     
                     <div className="pt-4 mt-2 border-t border-slate-200">
                         <p className="px-4 text-xs font-semibold text-slate-700 uppercase tracking-wider mb-4">Filtros ({filteredData.length})</p>
@@ -393,22 +432,18 @@ export default function App() {
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
                         <div className="w-full">
                             <h2 className={`font-bold text-slate-800 mb-2 ${activeTab === 'dashboard' ? 'text-4xl text-center' : 'text-2xl'}`}>
-                                {activeTab === 'dashboard' && (
-                                    <>
-                                        <span className="text-cyan-600">Egg</span>
-                                        <span className="text-yellow-600">Monitor</span>
-                                    </>
-                                )}
+                                {activeTab === 'dashboard' && 'Dashboard Principal'}
                                 {activeTab === 'histograms' && 'Distribución de Frecuencias'}
                                 {activeTab === 'monthly-averages' && 'Análisis de Tendencia Mensual'}
                                 {activeTab === 'summary' && 'Resumen Estadístico'}
                                 {activeTab === 'chat' && 'Asistente Avícola IA'}
+                                {activeTab === 'report' && 'Reporte de Calidad de Huevo'}
                             </h2>
                             <p className={`text-slate-500 text-sm mt-1 ${activeTab === 'dashboard' ? 'text-center' : ''}`}>
                                 Mostrando datos del <span className="font-semibold">{new Date(startDate).toLocaleDateString()}</span> al <span className="font-semibold">{new Date(endDate).toLocaleDateString()}</span>
                             </p>
                         </div>
-                        {isDownloading && <div className="flex items-center text-blue-600 text-sm font-medium"><Loader className="animate-spin mr-2" size={16} /> Generando reporte...</div>}
+                         {activeTab !== 'report' && isDownloading && <div className="flex items-center text-blue-600 text-sm font-medium"><Loader className="animate-spin mr-2" size={16} /> Generando reporte...</div>}
                     </div>
 
                     {/* VISTA DASHBOARD */}
@@ -553,6 +588,182 @@ export default function App() {
                                 averages={globalAverages}
                                 metricConfig={METRIC_CONFIG}
                             />
+                        </div>
+                    )}
+
+                    {/* VISTA REPORTE COMPARATIVO POR CASETA */}
+                    {activeTab === 'report' && (
+                        <div className="animate-in fade-in duration-500">
+                             <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 mb-6">
+                                <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                                    <div>
+                                        <h3 className="font-bold text-lg text-slate-800">Previsualización del Reporte Comparativo</h3>
+                                        <p className="text-sm text-slate-500">El PDF contendrá la tabla y gráficos comparativos de esta página.</p>
+                                    </div>
+                                    <button 
+                                        onClick={() => handleDownload('full-report-content', `Reporte-Calidad-Huevo.pdf`)}
+                                        disabled={!scriptsReady || isDownloading}
+                                        className="w-full md:w-auto flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-xl transition-all disabled:bg-green-300"
+                                    >
+                                        {isDownloading ? <Loader className="animate-spin" size={20}/> : <Download size={20} />}
+                                        {isDownloading ? 'Generando PDF...' : 'Descargar Reporte Completo'}
+                                    </button>
+                                </div>
+                                <div className="mt-6 pt-6 border-t border-slate-200 flex flex-col md:flex-row items-center gap-2 md:gap-4">
+                                    <h4 className="text-sm font-semibold text-slate-600 mb-2 md:mb-0">Análisis Rápido:</h4>
+                                    <select
+                                        value={highlightMetric}
+                                        onChange={(e) => setHighlightMetric(e.target.value)}
+                                        className="w-full md:w-auto bg-slate-100 border border-slate-300 rounded-lg text-sm p-2 focus:ring-blue-500 focus:border-blue-500"
+                                    >
+                                        {METRIC_KEYS.map(key => <option key={key} value={key}>{METRIC_CONFIG[key].name}</option>)}
+                                    </select>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => handleHighlight(highlightMetric, 'best')} className="text-sm font-medium bg-green-100 text-green-800 px-3 py-2 rounded-lg hover:bg-green-200 transition-colors">Mejor Rendimiento</button>
+                                        <button onClick={() => handleHighlight(highlightMetric, 'worst')} className="text-sm font-medium bg-red-100 text-red-800 px-3 py-2 rounded-lg hover:bg-red-200 transition-colors">Peor Rendimiento</button>
+                                        <button onClick={clearHighlight} className="text-sm text-slate-500 hover:text-slate-800 px-3 py-2 rounded-lg hover:bg-slate-100 transition-colors">Limpiar</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="full-report-content" className="bg-white p-8 rounded-xl">
+                                {/* Report Header */}
+                                <div className="relative border-b pb-8 border-slate-200 mb-12">
+                                    <div className="absolute top-0 left-0">
+                                        <EggMonitorLogo size={72} />
+                                    </div>
+                                    <div className="text-center">
+                                        <h1 className="text-4xl font-extrabold text-slate-800">
+                                            <span className="text-cyan-600">Egg</span><span className="text-yellow-600">Monitor</span>
+                                        </h1>
+                                        <h2 className="text-3xl font-bold text-slate-700 mt-2">Reporte de Calidad de Huevo</h2>
+                                        <p className="mt-4 text-slate-500">
+                                            Datos desde <span className="font-semibold">{new Date(startDate).toLocaleDateString()}</span> hasta <span className="font-semibold">{new Date(endDate).toLocaleDateString()}</span>
+                                        </p>
+                                        <div className="mt-4 text-xs text-slate-400">
+                                            Filtros Aplicados: Granja ({selectedFarm}), Caseta ({selectedShed}), Edad ({selectedAge}), Estirpe ({selectedBreed})
+                                        </div>
+                                    </div>
+                                </div>
+
+
+                                {uniqueShedsInFilter.length > 0 ? (
+                                    <>
+                                        {/* Section 1: Stats Table */}
+                                        <div>
+                                            <h2 className="text-2xl font-bold text-slate-700 mb-6">1. Tabla Comparativa de Estadísticas</h2>
+                                            <div className="overflow-x-auto rounded-lg border border-slate-200">
+                                                <table className="min-w-full divide-y divide-slate-200 text-sm">
+                                                    <thead className="bg-slate-50">
+                                                        <tr>
+                                                            <th scope="col" className="px-4 py-3 text-left font-semibold text-slate-600 sticky left-0 bg-slate-50 z-10">Caseta</th>
+                                                            {METRIC_KEYS.map(key => (
+                                                                <th key={key} colSpan={4} className="px-4 py-3 text-center font-semibold text-slate-600 border-l border-slate-200">
+                                                                    {METRIC_CONFIG[key].name}
+                                                                </th>
+                                                            ))}
+                                                        </tr>
+                                                        <tr>
+                                                            <th scope="col" className="px-4 py-2 text-left font-medium text-slate-500 sticky left-0 bg-slate-50 z-10"></th>
+                                                            {METRIC_KEYS.map(key => (
+                                                                <React.Fragment key={`${key}-sub`}>
+                                                                    <th scope="col" className="px-2 py-2 text-center font-medium text-slate-500 border-l border-slate-200">Prom.</th>
+                                                                    <th scope="col" className="px-2 py-2 text-center font-medium text-slate-500">Mín.</th>
+                                                                    <th scope="col" className="px-2 py-2 text-center font-medium text-slate-500">Máx.</th>
+                                                                    <th scope="col" className="px-2 py-2 text-center font-medium text-slate-500">DE</th>
+                                                                </React.Fragment>
+                                                            ))}
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-200 bg-white">
+                                                        {comparativeStatsData.map(row => (
+                                                            <tr key={row.shed} className={`transition-colors ${
+                                                                highlightConfig.shed === row.shed ? (highlightConfig.criteria === 'best' ? 'bg-green-50' : 'bg-red-50') : 'hover:bg-slate-50'
+                                                            }`}>
+                                                                <td className={`px-4 py-3 font-bold text-slate-800 sticky left-0 z-10 ${
+                                                                    highlightConfig.shed === row.shed ? (highlightConfig.criteria === 'best' ? 'bg-green-50' : 'bg-red-50') : 'bg-white'
+                                                                }`}>{row.shed}</td>
+                                                                {METRIC_KEYS.map(key => (
+                                                                    <React.Fragment key={`${key}-${row.shed}`}>
+                                                                        <td className={`px-2 py-3 text-center text-slate-700 font-semibold border-l border-slate-200 transition-all ${
+                                                                            highlightConfig.shed === row.shed && highlightConfig.metricKey === key ? 'ring-2 ring-offset-0 ring-blue-500 rounded' : ''
+                                                                        }`}>{row[`${key}_mean`]}</td>
+                                                                        <td className="px-2 py-3 text-center text-slate-600">{row[`${key}_min`]}</td>
+                                                                        <td className="px-2 py-3 text-center text-slate-600">{row[`${key}_max`]}</td>
+                                                                        <td className="px-2 py-3 text-center text-slate-600">{row[`${key}_std`]}</td>
+                                                                    </React.Fragment>
+                                                                ))}
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+
+                                        {/* Section 2: Comparative Charts */}
+                                        <div className="mt-12 pt-12 border-t-2 border-cyan-600">
+                                            <h2 className="text-2xl font-bold text-slate-700 mb-8">2. Gráficos Comparativos de Promedios</h2>
+                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-12">
+                                                {METRIC_KEYS.map(key => (
+                                                    <div key={`compare-chart-${key}`} className="min-h-[300px]">
+                                                        <h3 className="font-bold text-center text-slate-600 mb-4">{`Promedio de ${METRIC_CONFIG[key].name} por Caseta`}</h3>
+                                                        <ResponsiveContainer width="100%" height={300}>
+                                                            <BarChart data={comparativeChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                                <XAxis dataKey="shed" stroke="#94a3b8" tick={{fontSize: 12}} />
+                                                                <YAxis stroke="#94a3b8" tick={{fontSize: 10}} domain={['auto', 'auto']} tickFormatter={(t) => t.toFixed(1)} />
+                                                                <Tooltip
+                                                                    cursor={{fill: '#f8fafc'}}
+                                                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                                                    formatter={(value: number) => [`${value.toFixed(2)} ${METRIC_CONFIG[key].unit}`, METRIC_CONFIG[key].name]}
+                                                                />
+                                                                <Bar dataKey={key} name={METRIC_CONFIG[key].name} radius={[4, 4, 0, 0]}>
+                                                                    {comparativeChartData.map((entry, index) => (
+                                                                        <Cell key={`cell-${index}`} fill={
+                                                                            highlightConfig.shed === entry.shed && highlightConfig.metricKey === key
+                                                                            ? (highlightConfig.criteria === 'best' ? '#10b981' : '#ef4444')
+                                                                            : METRIC_CONFIG[key].color
+                                                                        } />
+                                                                    ))}
+                                                                </Bar>
+                                                            </BarChart>
+                                                        </ResponsiveContainer>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Section 3: Gauge Charts */}
+                                        <div className="mt-12 pt-12 border-t-2 border-cyan-600">
+                                            <h2 className="text-2xl font-bold text-slate-700 mb-8">3. Diagnóstico de Calidad por Caseta</h2>
+                                            <div className="space-y-12">
+                                                {comparativeStatsData.map(shedData => (
+                                                <div key={shedData.shed}>
+                                                    <h3 className="text-xl font-bold text-slate-800 mb-6 pb-2 border-b-2 border-slate-300">Diagnóstico para: <span className="text-blue-600">{shedData.shed}</span></h3>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+                                                    {METRIC_KEYS.map(key => (
+                                                        <GaugeChart
+                                                        key={`${shedData.shed}-${key}`}
+                                                        metricKey={key}
+                                                        value={parseFloat(shedData[`${key}_mean`])}
+                                                        standards={QUALITY_STANDARDS}
+                                                        metricConfig={METRIC_CONFIG}
+                                                        />
+                                                    ))}
+                                                    </div>
+                                                </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="text-center py-20 text-slate-500">
+                                        <ClipboardList size={40} className="mx-auto mb-4 text-slate-400"/>
+                                        <h3 className="text-xl font-bold">No hay Datos para Reportar</h3>
+                                        <p>Por favor, ajuste los filtros para incluir al menos una caseta con registros.</p>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>

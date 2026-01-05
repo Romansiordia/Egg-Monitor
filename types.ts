@@ -55,4 +55,18 @@ export interface FilterState {
   recordCount: number;
 }
 
-export type TabType = 'dashboard' | 'histograms' | 'monthly-averages' | 'summary' | 'chat';
+export type TabType = 'dashboard' | 'histograms' | 'monthly-averages' | 'summary' | 'chat' | 'report';
+
+export interface QualityStandard {
+  min: number;
+  max: number;
+  ranges: {
+    poor: [number, number];
+    acceptable: [number, number];
+    optimal: [number, number];
+  };
+}
+
+export interface QualityStandardsConfig {
+  [key: string]: QualityStandard;
+}
