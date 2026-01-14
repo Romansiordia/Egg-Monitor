@@ -6,6 +6,7 @@ export interface EggData {
   shed: string;
   age: string;
   breed: string;
+  client?: string; // Columna de cliente añadida
   weight: number;
   breakingStrength: number;
   shellThickness: number;
@@ -50,6 +51,7 @@ export interface FilterState {
   selectedShed: string;
   selectedAge: string;
   selectedBreed: string;
+  selectedClient: string;
   startDate: string;
   endDate: string;
   recordCount: number;

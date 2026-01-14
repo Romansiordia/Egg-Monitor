@@ -1,8 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { ChatSource } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 const SYSTEM_PROMPT = `Eres un experto en avicultura y análisis de calidad de huevo (Egg Quality Monitor). Tu tarea es interpretar los datos estadísticos proporcionados a continuación, responder la pregunta del usuario con claridad y utilizando un tono profesional y accesible (en español). Si es necesario, usa tus conocimientos de avicultura para contextualizar los resultados.
 
 Instrucciones:
@@ -15,6 +13,9 @@ export const sendMessageToGemini = async (
     userQuery: string, 
     dataContext: string
 ): Promise<{ text: string; sources: ChatSource[] }> => {
+    // Inicializamos dentro de la función para asegurar que usamos la clave de API más reciente del entorno.
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
     try {
         const fullPrompt = `Basándote en el siguiente contexto de datos, responde mi pregunta.
         
@@ -25,7 +26,7 @@ export const sendMessageToGemini = async (
         Mi pregunta es: ${userQuery}`;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: fullPrompt,
             config: {
                 systemInstruction: SYSTEM_PROMPT,
@@ -35,7 +36,7 @@ export const sendMessageToGemini = async (
 
         const text = response.text || "No pude generar una respuesta.";
         
-        // Extract grounding chunks if available
+        // Extraer fragmentos de grounding (fuentes de búsqueda) si están disponibles
         let sources: ChatSource[] = [];
         const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
         
@@ -50,10 +51,14 @@ export const sendMessageToGemini = async (
 
         return { text, sources };
 
-    } catch (error) {
-        console.error("Gemini API Error:", error);
-        // Devolvemos un mensaje amigable en lugar de romper la promesa abruptamente si es posible,
-        // pero lanzar el error permite al UI manejar el estado de error.
+    } catch (error: any) {
+        console.error("Gemini API Error Detallado:", error);
+        
+        // Manejo de errores comunes de configuración en despliegue
+        if (error.message?.includes("API_KEY") || error.message?.includes("not found")) {
+            throw new Error("Error de configuración: Asegúrate de que la clave de API (API_KEY) esté configurada correctamente en las variables de entorno de Vercel.");
+        }
+        
         throw error;
     }
 };

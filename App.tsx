@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
 import { 
-  Activity, BarChart2, TrendingUp, FileText, MessageSquare, Menu, Calendar, Upload, Download, Loader, Egg, PieChart, ZoomIn, ClipboardList 
+  Activity, BarChart2, TrendingUp, FileText, MessageSquare, Menu, Calendar, Upload, Download, Loader, Egg, PieChart, ZoomIn, ClipboardList, Users 
 } from 'lucide-react';
 
 import { generateMockData, calculateAllStats, getHistogramData, calculateMonthlyAverages } from './utils/dataUtils';
@@ -108,6 +108,7 @@ export default function App() {
     const [selectedShed, setSelectedShed] = useState('Todos');
     const [selectedAge, setSelectedAge] = useState('Todos');
     const [selectedBreed, setSelectedBreed] = useState('Todos');
+    const [selectedClient, setSelectedClient] = useState('Todos');
     
     // Dates (Defaults: Last 30 days)
     const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
@@ -132,6 +133,7 @@ export default function App() {
         if (a === 'Todos') return -1; if (b === 'Todos') return 1; return parseInt(a as string) - parseInt(b as string);
     }), [dashboardData]);
     const BREEDS = useMemo(() => ['Todos', ...Array.from(new Set(dashboardData.map(d => d.breed).filter(Boolean))).sort()], [dashboardData]);
+    const CLIENTS = useMemo(() => ['Todos', ...Array.from(new Set(dashboardData.map(d => d.client).filter(Boolean) as string[]))], [dashboardData]);
     
     // Filtering Logic
     const filteredData = useMemo(() => {
@@ -146,10 +148,11 @@ export default function App() {
             const shedMatch = selectedShed === 'Todos' || d.shed === selectedShed;
             const ageMatch = selectedAge === 'Todos' || d.age === selectedAge;
             const breedMatch = selectedBreed === 'Todos' || d.breed === selectedBreed;
+            const clientMatch = selectedClient === 'Todos' || d.client === selectedClient;
 
-            return dateMatch && farmMatch && shedMatch && ageMatch && breedMatch;
+            return dateMatch && farmMatch && shedMatch && ageMatch && breedMatch && clientMatch;
         });
-    }, [dashboardData, selectedFarm, selectedShed, selectedAge, selectedBreed, startDate, endDate]);
+    }, [dashboardData, selectedFarm, selectedShed, selectedAge, selectedBreed, selectedClient, startDate, endDate]);
 
     // Monthly Averages (Global)
     const monthlyAverageData = useMemo(() => {
@@ -201,7 +204,7 @@ export default function App() {
                     'fecha': 'date', 'granja': 'farm', 'caseta': 'shed', 'edad': 'age',
                     'peso': 'weight', 'resistencia': 'breakingStrength', 'altura': 'height',
                     'unidadeshaugh': 'haughUnits', 'coloryema': 'yolkColor', 
-                    'grosorcascaron': 'shellThickness', 'estirpe': 'breed'
+                    'grosorcascaron': 'shellThickness', 'estirpe': 'breed', 'cliente': 'client'
                 };
                 
                 const dataIndex: {[key: string]: number} = {};
@@ -294,27 +297,31 @@ export default function App() {
     };
 
     // --- Report Specific Data ---
+    const [reportType, setReportType] = useState<'shed' | 'client'>('shed');
+    const reportKey = reportType === 'shed' ? 'shed' : 'client';
+    const reportLabel = reportType === 'shed' ? 'Caseta' : 'Cliente';
+
     const METRIC_KEYS = useMemo(() => Object.keys(METRIC_CONFIG), []);
-    const uniqueShedsInFilter = useMemo(() => [...new Set(filteredData.map(d => d.shed).filter(Boolean))].sort(), [filteredData]);
+    const uniqueReportEntities = useMemo(() => [...new Set(filteredData.map(d => d[reportKey]).filter(Boolean) as string[])].sort(), [filteredData, reportKey]);
 
     const comparativeChartData = useMemo(() => {
-        return uniqueShedsInFilter.map(shed => {
-            const shedData = filteredData.filter(d => d.shed === shed);
-            const averages: { [key: string]: any } = { shed };
+        return uniqueReportEntities.map(entity => {
+            const entityData = filteredData.filter(d => d[reportKey] === entity);
+            const averages: { [key: string]: any } = { [reportKey]: entity };
             METRIC_KEYS.forEach(key => {
-                const stats = calculateAllStats(shedData, key);
+                const stats = calculateAllStats(entityData, key);
                 averages[key] = parseFloat(stats.mean.toFixed(2));
             });
             return averages;
         });
-    }, [filteredData, uniqueShedsInFilter, METRIC_KEYS]);
+    }, [filteredData, uniqueReportEntities, METRIC_KEYS, reportKey]);
 
     const comparativeStatsData = useMemo(() => {
-        return uniqueShedsInFilter.map(shed => {
-            const shedData = filteredData.filter(d => d.shed === shed);
-            const stats: { [key: string]: any } = { shed };
+        return uniqueReportEntities.map(entity => {
+            const entityData = filteredData.filter(d => d[reportKey] === entity);
+            const stats: { [key: string]: any } = { [reportKey]: entity };
             METRIC_KEYS.forEach(key => {
-                const result = calculateAllStats(shedData, key);
+                const result = calculateAllStats(entityData, key);
                 stats[`${key}_mean`] = result.mean.toFixed(2);
                 stats[`${key}_min`] = result.min.toFixed(2);
                 stats[`${key}_max`] = result.max.toFixed(2);
@@ -322,22 +329,22 @@ export default function App() {
             });
             return stats;
         });
-    }, [filteredData, uniqueShedsInFilter, METRIC_KEYS]);
+    }, [filteredData, uniqueReportEntities, METRIC_KEYS, reportKey]);
 
     // Report Highlight State & Logic
     const [highlightMetric, setHighlightMetric] = useState(METRIC_KEYS[0]);
-    const [highlightConfig, setHighlightConfig] = useState<{ metricKey: string | null; criteria: 'best' | 'worst' | null; shed: string | null }>({ metricKey: null, criteria: null, shed: null });
+    const [highlightConfig, setHighlightConfig] = useState<{ metricKey: string | null; criteria: 'best' | 'worst' | null; entity: string | null }>({ metricKey: null, criteria: null, entity: null });
     
     const handleHighlight = (key: string, criteria: 'best' | 'worst') => {
         if (!key || comparativeChartData.length === 0) return;
-        const targetShed = comparativeChartData.reduce((prev, current) => {
+        const targetEntity = comparativeChartData.reduce((prev, current) => {
             if (criteria === 'best') return (current[key] > prev[key]) ? current : prev;
             return (current[key] < prev[key]) ? current : prev;
         });
-        setHighlightConfig({ metricKey: key, criteria, shed: targetShed.shed });
+        setHighlightConfig({ metricKey: key, criteria, entity: targetEntity[reportKey] });
     };
 
-    const clearHighlight = () => setHighlightConfig({ metricKey: null, criteria: null, shed: null });
+    const clearHighlight = () => setHighlightConfig({ metricKey: null, criteria: null, entity: null });
 
 
     // --- Render Logic ---
@@ -385,10 +392,10 @@ export default function App() {
                                 <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-slate-100 border border-slate-300 rounded text-xs text-slate-900 p-2 mb-2 focus:ring-blue-500 focus:border-blue-500" />
                                 <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-slate-100 border border-slate-300 rounded text-xs text-slate-900 p-2 focus:ring-blue-500 focus:border-blue-500" />
                             </div>
-                            {['Granja', 'Caseta', 'Edad', 'Estirpe'].map((label, idx) => {
-                            const val = [selectedFarm, selectedShed, selectedAge, selectedBreed][idx];
-                            const setVal = [setSelectedFarm, setSelectedShed, setSelectedAge, setSelectedBreed][idx];
-                            const opts = [FARMS, SHEDS, AGES, BREEDS][idx];
+                            {['Granja', 'Caseta', 'Edad', 'Estirpe', 'Cliente'].map((label, idx) => {
+                            const val = [selectedFarm, selectedShed, selectedAge, selectedBreed, selectedClient][idx];
+                            const setVal = [setSelectedFarm, setSelectedShed, setSelectedAge, setSelectedBreed, setSelectedClient][idx];
+                            const opts = [FARMS, SHEDS, AGES, BREEDS, CLIENTS][idx];
                             return (
                                 <div key={label}>
                                     <label className="block text-xs mb-1 text-slate-700">{label}</label>
@@ -582,7 +589,7 @@ export default function App() {
                                 onSubmit={handleChatSubmit}
                                 isThinking={isThinking}
                                 filters={{
-                                    selectedFarm, selectedShed, selectedAge, selectedBreed, 
+                                    selectedFarm, selectedShed, selectedAge, selectedBreed, selectedClient,
                                     startDate, endDate, recordCount: filteredData.length
                                 }}
                                 averages={globalAverages}
@@ -591,17 +598,17 @@ export default function App() {
                         </div>
                     )}
 
-                    {/* VISTA REPORTE COMPARATIVO POR CASETA */}
+                    {/* VISTA REPORTE COMPARATIVO */}
                     {activeTab === 'report' && (
                         <div className="animate-in fade-in duration-500">
                              <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 mb-6">
-                                <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                                     <div>
                                         <h3 className="font-bold text-lg text-slate-800">Previsualización del Reporte Comparativo</h3>
-                                        <p className="text-sm text-slate-500">El PDF contendrá la tabla y gráficos comparativos de esta página.</p>
+                                        <p className="text-sm text-slate-500">El PDF contendrá la tabla y gráficos de esta página.</p>
                                     </div>
                                     <button 
-                                        onClick={() => handleDownload('full-report-content', `Reporte-Calidad-Huevo.pdf`)}
+                                        onClick={() => handleDownload('full-report-content', `Reporte-Calidad-${reportLabel}.pdf`)}
                                         disabled={!scriptsReady || isDownloading}
                                         className="w-full md:w-auto flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-xl transition-all disabled:bg-green-300"
                                     >
@@ -609,19 +616,29 @@ export default function App() {
                                         {isDownloading ? 'Generando PDF...' : 'Descargar Reporte Completo'}
                                     </button>
                                 </div>
-                                <div className="mt-6 pt-6 border-t border-slate-200 flex flex-col md:flex-row items-center gap-2 md:gap-4">
-                                    <h4 className="text-sm font-semibold text-slate-600 mb-2 md:mb-0">Análisis Rápido:</h4>
-                                    <select
-                                        value={highlightMetric}
-                                        onChange={(e) => setHighlightMetric(e.target.value)}
-                                        className="w-full md:w-auto bg-slate-100 border border-slate-300 rounded-lg text-sm p-2 focus:ring-blue-500 focus:border-blue-500"
-                                    >
-                                        {METRIC_KEYS.map(key => <option key={key} value={key}>{METRIC_CONFIG[key].name}</option>)}
-                                    </select>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => handleHighlight(highlightMetric, 'best')} className="text-sm font-medium bg-green-100 text-green-800 px-3 py-2 rounded-lg hover:bg-green-200 transition-colors">Mejor Rendimiento</button>
-                                        <button onClick={() => handleHighlight(highlightMetric, 'worst')} className="text-sm font-medium bg-red-100 text-red-800 px-3 py-2 rounded-lg hover:bg-red-200 transition-colors">Peor Rendimiento</button>
-                                        <button onClick={clearHighlight} className="text-sm text-slate-500 hover:text-slate-800 px-3 py-2 rounded-lg hover:bg-slate-100 transition-colors">Limpiar</button>
+                                
+                                <div className="mt-6 pt-6 border-t border-slate-200 space-y-4">
+                                    <div className="flex flex-col md:flex-row items-center gap-2 md:gap-4">
+                                        <h4 className="text-sm font-semibold text-slate-600">Tipo de Análisis:</h4>
+                                        <div className="p-1 bg-slate-100 rounded-lg flex gap-1">
+                                            <button onClick={() => setReportType('shed')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${reportType === 'shed' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:bg-slate-200'}`}>Por Caseta</button>
+                                            <button onClick={() => setReportType('client')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${reportType === 'client' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:bg-slate-200'}`}>Por Cliente</button>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col md:flex-row items-center gap-2 md:gap-4">
+                                        <h4 className="text-sm font-semibold text-slate-600">Análisis Rápido:</h4>
+                                        <select
+                                            value={highlightMetric}
+                                            onChange={(e) => setHighlightMetric(e.target.value)}
+                                            className="w-full md:w-auto bg-slate-100 border border-slate-300 rounded-lg text-sm p-2 focus:ring-blue-500 focus:border-blue-500"
+                                        >
+                                            {METRIC_KEYS.map(key => <option key={key} value={key}>{METRIC_CONFIG[key].name}</option>)}
+                                        </select>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => handleHighlight(highlightMetric, 'best')} className="text-sm font-medium bg-green-100 text-green-800 px-3 py-2 rounded-lg hover:bg-green-200 transition-colors">Mejor Rendimiento</button>
+                                            <button onClick={() => handleHighlight(highlightMetric, 'worst')} className="text-sm font-medium bg-red-100 text-red-800 px-3 py-2 rounded-lg hover:bg-red-200 transition-colors">Peor Rendimiento</button>
+                                            <button onClick={clearHighlight} className="text-sm text-slate-500 hover:text-slate-800 px-3 py-2 rounded-lg hover:bg-slate-100 transition-colors">Limpiar</button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -637,26 +654,31 @@ export default function App() {
                                             <span className="text-cyan-600">Egg</span><span className="text-yellow-600">Monitor</span>
                                         </h1>
                                         <h2 className="text-3xl font-bold text-slate-700 mt-2">Reporte de Calidad de Huevo</h2>
+                                        {selectedClient !== 'Todos' && (
+                                            <p className="text-xl font-medium text-slate-500 mt-2">
+                                                Para el cliente: <span className="font-semibold text-blue-600">{selectedClient}</span>
+                                            </p>
+                                        )}
                                         <p className="mt-4 text-slate-500">
                                             Datos desde <span className="font-semibold">{new Date(startDate).toLocaleDateString()}</span> hasta <span className="font-semibold">{new Date(endDate).toLocaleDateString()}</span>
                                         </p>
                                         <div className="mt-4 text-xs text-slate-400">
-                                            Filtros Aplicados: Granja ({selectedFarm}), Caseta ({selectedShed}), Edad ({selectedAge}), Estirpe ({selectedBreed})
+                                            Filtros Aplicados: Granja ({selectedFarm}), Caseta ({selectedShed}), Edad ({selectedAge}), Estirpe ({selectedBreed}), Cliente ({selectedClient})
                                         </div>
                                     </div>
                                 </div>
 
 
-                                {uniqueShedsInFilter.length > 0 ? (
+                                {uniqueReportEntities.length > 0 ? (
                                     <>
                                         {/* Section 1: Stats Table */}
                                         <div>
-                                            <h2 className="text-2xl font-bold text-slate-700 mb-6">1. Tabla Comparativa de Estadísticas</h2>
+                                            <h2 className="text-2xl font-bold text-slate-700 mb-6">1. Tabla Comparativa de Estadísticas por {reportLabel}</h2>
                                             <div className="overflow-x-auto rounded-lg border border-slate-200">
                                                 <table className="min-w-full divide-y divide-slate-200 text-sm">
                                                     <thead className="bg-slate-50">
                                                         <tr>
-                                                            <th scope="col" className="px-4 py-3 text-left font-semibold text-slate-600 sticky left-0 bg-slate-50 z-10">Caseta</th>
+                                                            <th scope="col" className="px-4 py-3 text-left font-semibold text-slate-600 sticky left-0 bg-slate-50 z-10">{reportLabel}</th>
                                                             {METRIC_KEYS.map(key => (
                                                                 <th key={key} colSpan={4} className="px-4 py-3 text-center font-semibold text-slate-600 border-l border-slate-200">
                                                                     {METRIC_CONFIG[key].name}
@@ -677,16 +699,16 @@ export default function App() {
                                                     </thead>
                                                     <tbody className="divide-y divide-slate-200 bg-white">
                                                         {comparativeStatsData.map(row => (
-                                                            <tr key={row.shed} className={`transition-colors ${
-                                                                highlightConfig.shed === row.shed ? (highlightConfig.criteria === 'best' ? 'bg-green-50' : 'bg-red-50') : 'hover:bg-slate-50'
+                                                            <tr key={row[reportKey]} className={`transition-colors ${
+                                                                highlightConfig.entity === row[reportKey] ? (highlightConfig.criteria === 'best' ? 'bg-green-50' : 'bg-red-50') : 'hover:bg-slate-50'
                                                             }`}>
                                                                 <td className={`px-4 py-3 font-bold text-slate-800 sticky left-0 z-10 ${
-                                                                    highlightConfig.shed === row.shed ? (highlightConfig.criteria === 'best' ? 'bg-green-50' : 'bg-red-50') : 'bg-white'
-                                                                }`}>{row.shed}</td>
+                                                                    highlightConfig.entity === row[reportKey] ? (highlightConfig.criteria === 'best' ? 'bg-green-50' : 'bg-red-50') : 'bg-white'
+                                                                }`}>{row[reportKey]}</td>
                                                                 {METRIC_KEYS.map(key => (
-                                                                    <React.Fragment key={`${key}-${row.shed}`}>
+                                                                    <React.Fragment key={`${key}-${row[reportKey]}`}>
                                                                         <td className={`px-2 py-3 text-center text-slate-700 font-semibold border-l border-slate-200 transition-all ${
-                                                                            highlightConfig.shed === row.shed && highlightConfig.metricKey === key ? 'ring-2 ring-offset-0 ring-blue-500 rounded' : ''
+                                                                            highlightConfig.entity === row[reportKey] && highlightConfig.metricKey === key ? 'ring-2 ring-offset-0 ring-blue-500 rounded' : ''
                                                                         }`}>{row[`${key}_mean`]}</td>
                                                                         <td className="px-2 py-3 text-center text-slate-600">{row[`${key}_min`]}</td>
                                                                         <td className="px-2 py-3 text-center text-slate-600">{row[`${key}_max`]}</td>
@@ -702,15 +724,15 @@ export default function App() {
 
                                         {/* Section 2: Comparative Charts */}
                                         <div className="mt-12 pt-12 border-t-2 border-cyan-600">
-                                            <h2 className="text-2xl font-bold text-slate-700 mb-8">2. Gráficos Comparativos de Promedios</h2>
+                                            <h2 className="text-2xl font-bold text-slate-700 mb-8">2. Gráficos Comparativos de Promedios por {reportLabel}</h2>
                                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-12">
                                                 {METRIC_KEYS.map(key => (
                                                     <div key={`compare-chart-${key}`} className="min-h-[300px]">
-                                                        <h3 className="font-bold text-center text-slate-600 mb-4">{`Promedio de ${METRIC_CONFIG[key].name} por Caseta`}</h3>
+                                                        <h3 className="font-bold text-center text-slate-600 mb-4">{`Promedio de ${METRIC_CONFIG[key].name} por ${reportLabel}`}</h3>
                                                         <ResponsiveContainer width="100%" height={300}>
                                                             <BarChart data={comparativeChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                                                <XAxis dataKey="shed" stroke="#94a3b8" tick={{fontSize: 12}} />
+                                                                <XAxis dataKey={reportKey} stroke="#94a3b8" tick={{fontSize: 12}} />
                                                                 <YAxis stroke="#94a3b8" tick={{fontSize: 10}} domain={['auto', 'auto']} tickFormatter={(t) => t.toFixed(1)} />
                                                                 <Tooltip
                                                                     cursor={{fill: '#f8fafc'}}
@@ -720,7 +742,7 @@ export default function App() {
                                                                 <Bar dataKey={key} name={METRIC_CONFIG[key].name} radius={[4, 4, 0, 0]}>
                                                                     {comparativeChartData.map((entry, index) => (
                                                                         <Cell key={`cell-${index}`} fill={
-                                                                            highlightConfig.shed === entry.shed && highlightConfig.metricKey === key
+                                                                            highlightConfig.entity === entry[reportKey] && highlightConfig.metricKey === key
                                                                             ? (highlightConfig.criteria === 'best' ? '#10b981' : '#ef4444')
                                                                             : METRIC_CONFIG[key].color
                                                                         } />
@@ -735,17 +757,17 @@ export default function App() {
                                         
                                         {/* Section 3: Gauge Charts */}
                                         <div className="mt-12 pt-12 border-t-2 border-cyan-600">
-                                            <h2 className="text-2xl font-bold text-slate-700 mb-8">3. Diagnóstico de Calidad por Caseta</h2>
+                                            <h2 className="text-2xl font-bold text-slate-700 mb-8">3. Diagnóstico de Calidad por {reportLabel}</h2>
                                             <div className="space-y-12">
-                                                {comparativeStatsData.map(shedData => (
-                                                <div key={shedData.shed}>
-                                                    <h3 className="text-xl font-bold text-slate-800 mb-6 pb-2 border-b-2 border-slate-300">Diagnóstico para: <span className="text-blue-600">{shedData.shed}</span></h3>
+                                                {comparativeStatsData.map(entityData => (
+                                                <div key={entityData[reportKey]}>
+                                                    <h3 className="text-xl font-bold text-slate-800 mb-6 pb-2 border-b-2 border-slate-300">Diagnóstico para: <span className="text-blue-600">{entityData[reportKey]}</span></h3>
                                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
                                                     {METRIC_KEYS.map(key => (
                                                         <GaugeChart
-                                                        key={`${shedData.shed}-${key}`}
+                                                        key={`${entityData[reportKey]}-${key}`}
                                                         metricKey={key}
-                                                        value={parseFloat(shedData[`${key}_mean`])}
+                                                        value={parseFloat(entityData[`${key}_mean`])}
                                                         standards={QUALITY_STANDARDS}
                                                         metricConfig={METRIC_CONFIG}
                                                         />
@@ -760,7 +782,7 @@ export default function App() {
                                     <div className="text-center py-20 text-slate-500">
                                         <ClipboardList size={40} className="mx-auto mb-4 text-slate-400"/>
                                         <h3 className="text-xl font-bold">No hay Datos para Reportar</h3>
-                                        <p>Por favor, ajuste los filtros para incluir al menos una caseta con registros.</p>
+                                        <p>Por favor, ajuste los filtros para incluir al menos un(a) {reportLabel.toLowerCase()} con registros.</p>
                                     </div>
                                 )}
                             </div>

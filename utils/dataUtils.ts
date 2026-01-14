@@ -5,6 +5,7 @@ export const generateMockData = (): EggData[] => {
     const sheds = ['A1', 'A2', 'B1', 'B2'];
     const ages = ['30', '45', '60', '75'];
     const breeds = ['Hy-Line', 'Lohmann', 'Shaver']; 
+    const clients = ['Supermercado El Ahorro', 'Distribuidora Central', 'Restaurantes Unidos'];
     const data: EggData[] = [];
     const endDate = new Date();
 
@@ -18,6 +19,7 @@ export const generateMockData = (): EggData[] => {
                 shed: sheds[Math.floor(Math.random() * sheds.length)], 
                 age: ages[Math.floor(Math.random() * ages.length)],
                 breed: breeds[Math.floor(Math.random() * breeds.length)],
+                client: clients[Math.floor(Math.random() * clients.length)],
                 weight: 58 + Math.random() * 10 - 5, 
                 breakingStrength: 3.5 + Math.random() * 1.5 - 0.75,
                 shellThickness: 0.35 + Math.random() * 0.1 - 0.05, 
