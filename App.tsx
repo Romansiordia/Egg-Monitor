@@ -304,9 +304,9 @@ export default function App() {
                                 </div>
                             </div>
 
-                            {/* Branding Central Ajustado */}
+                            {/* Branding Central Ajustado (Aumentado 20%) */}
                             <div className="flex justify-center mb-10 border-b border-slate-50 pb-6">
-                                <h2 className="text-xl font-bold tracking-tight select-none pointer-events-none">
+                                <h2 className="text-2xl font-bold tracking-tight select-none pointer-events-none">
                                     <span className="text-cyan-500">Egg</span>
                                     <span className="text-yellow-400">Monitor</span>
                                 </h2>
