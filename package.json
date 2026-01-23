@@ -1,7 +1,8 @@
+
 {
   "name": "egg-monitor-dashboard",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,11 +14,15 @@
     "react-dom": "^18.2.0",
     "lucide-react": "^0.344.0",
     "recharts": "^2.12.0",
-    "@google/genai": "*"
+    "@google/genai": "^1.33.0",
+    "xlsx": "0.18.5",
+    "jspdf": "^2.5.1",
+    "html2canvas": "^1.4.1"
   },
   "devDependencies": {
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",
+    "@types/node": "^20.11.0",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.38",
