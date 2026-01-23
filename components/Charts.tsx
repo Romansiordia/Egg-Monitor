@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { 
   LineChart, Line, BarChart, Bar, XAxis, YAxis, 
@@ -133,8 +134,8 @@ export const GaugeChart: React.FC<GaugeChartProps> = ({ metricKey, value, standa
                     <path d={describeArc(50, 50, 40, poorAngle, acceptableAngle)} fill="none" stroke="#eab308" strokeWidth="12" />
                     <path d={describeArc(50, 50, 40, acceptableAngle, 180)} fill="none" stroke="#22c55e" strokeWidth="12" />
                     
-                    {/* Needle */}
-                    <g transform={`rotate(${angle}, 50, 50)`}>
+                    {/* Needle - Corrected rotation to start at 9 o'clock (angle-90) */}
+                    <g transform={`rotate(${angle - 90}, 50, 50)`}>
                         <path d="M 50 50 L 50 12" stroke="#1e293b" strokeWidth="2" strokeLinecap="round" />
                         <circle cx="50" cy="50" r="4" fill="#1e293b" />
                     </g>

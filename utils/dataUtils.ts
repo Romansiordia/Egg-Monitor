@@ -1,3 +1,4 @@
+
 import { EggData } from '../types';
 
 export const generateMockData = (): EggData[] => {
@@ -20,6 +21,7 @@ export const generateMockData = (): EggData[] => {
                 age: ages[Math.floor(Math.random() * ages.length)],
                 breed: breeds[Math.floor(Math.random() * breeds.length)],
                 client: clients[Math.floor(Math.random() * clients.length)],
+                metaqualixId: `MQX-${1000 + Math.floor(Math.random() * 50)}`, // Generación mock de ID
                 weight: 58 + Math.random() * 10 - 5, 
                 breakingStrength: 3.5 + Math.random() * 1.5 - 0.75,
                 shellThickness: 0.35 + Math.random() * 0.1 - 0.05, 
@@ -83,12 +85,15 @@ export const calculateMonthlyAverages = (data: EggData[], metricKeys: string[]) 
     
     const averages = Object.keys(grouped).map(monthKey => {
         const totalCount = grouped[monthKey].count;
-        const avg: any = { month: monthKey, dateLabel: grouped[monthKey].dateLabel };
+        const avg: any = { 
+            date: monthKey, // Usamos 'date' para compatibilidad con DashboardChart
+            dateLabel: grouped[monthKey].dateLabel 
+        };
         metricKeys.forEach(key => {
             avg[key] = totalCount > 0 ? parseFloat((grouped[monthKey][key] / totalCount).toFixed(2)) : 0;
         });
         return avg;
     });
 
-    return averages.sort((a: any, b: any) => new Date(a.month).getTime() - new Date(b.month).getTime());
+    return averages.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 };

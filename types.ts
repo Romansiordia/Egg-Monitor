@@ -1,3 +1,4 @@
+
 import { LucideIcon } from 'lucide-react';
 
 export interface EggData {
@@ -6,13 +7,14 @@ export interface EggData {
   shed: string;
   age: string;
   breed: string;
-  client?: string; // Columna de cliente añadida
+  client?: string; 
+  metaqualixId?: string; // Nuevo campo para No. Metaqualix
   weight: number;
   breakingStrength: number;
   shellThickness: number;
   yolkColor: number;
   haughUnits: number;
-  [key: string]: string | number | null;
+  [key: string]: string | number | null | undefined;
 }
 
 export interface MetricConfigItem {
@@ -52,6 +54,7 @@ export interface FilterState {
   selectedAge: string;
   selectedBreed: string;
   selectedClient: string;
+  selectedMetaqualix: string; // Nuevo filtro en el estado
   startDate: string;
   endDate: string;
   recordCount: number;
