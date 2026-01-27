@@ -1,38 +1,6 @@
 
 import { EggData } from '../types';
 
-export const generateMockData = (): EggData[] => {
-    const farms = ['Granja Sol', 'Granja Luna', 'Granja Estrella'];
-    const sheds = ['A1', 'A2', 'B1', 'B2'];
-    const ages = ['30', '45', '60', '75'];
-    const breeds = ['Hy-Line', 'Lohmann', 'Shaver']; 
-    const clients = ['Supermercado El Ahorro', 'Distribuidora Central', 'Restaurantes Unidos'];
-    const data: EggData[] = [];
-    const endDate = new Date();
-
-    for (let i = 180; i >= 0; i--) { 
-        for (const farm of farms) {
-            const date = new Date();
-            date.setDate(endDate.getDate() - i);
-            data.push({
-                date: date.toISOString().split('T')[0],
-                farm: farm, 
-                shed: sheds[Math.floor(Math.random() * sheds.length)], 
-                age: ages[Math.floor(Math.random() * ages.length)],
-                breed: breeds[Math.floor(Math.random() * breeds.length)],
-                client: clients[Math.floor(Math.random() * clients.length)],
-                metaqualixId: `MQX-${1000 + Math.floor(Math.random() * 50)}`, // Generación mock de ID
-                weight: 58 + Math.random() * 10 - 5, 
-                breakingStrength: 3.5 + Math.random() * 1.5 - 0.75,
-                shellThickness: 0.35 + Math.random() * 0.1 - 0.05, 
-                yolkColor: 9 + Math.random() * 4 - 2,
-                haughUnits: 75 + Math.random() * 20 - 10,
-            });
-        }
-    }
-    return data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-};
-
 export const calculateAllStats = (data: EggData[], key: string) => {
     const values = data.map(d => d[key]).filter((v): v is number => typeof v === 'number' && !isNaN(v));
     if (values.length === 0) return { mean: 0, std: 0, min: 0, max: 0 };
