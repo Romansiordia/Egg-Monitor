@@ -60,7 +60,7 @@ export interface FilterState {
   recordCount: number;
 }
 
-export type TabType = 'dashboard' | 'histograms' | 'monthly-averages' | 'summary' | 'chat' | 'report';
+export type TabType = 'dashboard' | 'histograms' | 'monthly-averages' | 'summary' | 'chat' | 'report' | 'datasource';
 
 export interface QualityStandard {
   min: number;

@@ -144,6 +144,7 @@ export default function App() {
     const handleUrlSave = (newUrl: string) => {
         localStorage.setItem(SHEET_URL_KEY, newUrl);
         setGoogleSheetUrl(newUrl);
+        setActiveTab('dashboard'); // Volver al dashboard al guardar
     };
 
     const handleLogin = (password: string) => {
@@ -254,8 +255,17 @@ export default function App() {
     if (!isAuthenticated) return <LoginScreen onLogin={handleLogin} />;
 
     const renderContent = () => {
-        if (!googleSheetUrl || dataError) {
-            return <DataSourceSetupScreen onSave={handleUrlSave} error={dataError} isLoading={isLoadingData} />;
+        // Mostrar configuración si: No hay URL, hay Error, o el usuario seleccionó la pestaña 'datasource'
+        if (!googleSheetUrl || dataError || activeTab === 'datasource') {
+            return (
+                <DataSourceSetupScreen 
+                    onSave={handleUrlSave} 
+                    error={dataError} 
+                    isLoading={isLoadingData} 
+                    currentUrl={googleSheetUrl || ''} 
+                    onCancel={googleSheetUrl && !dataError ? () => setActiveTab('dashboard') : undefined}
+                />
+            );
         }
         if (isLoadingData) {
             return <div className="flex-1 flex flex-col items-center justify-center text-slate-500">
@@ -390,7 +400,7 @@ export default function App() {
                     <SidebarItem icon={ClipboardList} label="Reporte de Calidad" active={activeTab === 'report'} onClick={() => setActiveTab('report')} />
                     <SidebarItem icon={MessageSquare} label="Consultas IA" active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} />
                     <div className="pt-4 mt-4 border-t border-slate-100">
-                        <SidebarItem icon={Database} label="Fuente de Datos" active={false} onClick={() => { setDataError(null); setGoogleSheetUrl(null); }} />
+                        <SidebarItem icon={Database} label="Fuente de Datos" active={activeTab === 'datasource'} onClick={() => setActiveTab('datasource')} />
                     </div>
                 </nav>
                 <div className="pt-6 border-t border-slate-100">
@@ -408,9 +418,15 @@ interface DataSourceSetupScreenProps {
     onSave: (url: string) => void;
     error: string | null;
     isLoading: boolean;
+    currentUrl?: string;
+    onCancel?: () => void;
 }
-const DataSourceSetupScreen: React.FC<DataSourceSetupScreenProps> = ({ onSave, error, isLoading }) => {
-    const [url, setUrl] = useState('');
+const DataSourceSetupScreen: React.FC<DataSourceSetupScreenProps> = ({ onSave, error, isLoading, currentUrl, onCancel }) => {
+    const [url, setUrl] = useState(currentUrl || '');
+
+    useEffect(() => {
+        if (currentUrl) setUrl(currentUrl);
+    }, [currentUrl]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -444,13 +460,24 @@ const DataSourceSetupScreen: React.FC<DataSourceSetupScreenProps> = ({ onSave, e
                             </div>
                         </div>
                     )}
-                    <button
-                        type="submit"
-                        disabled={isLoading}
-                        className="mt-6 w-full bg-blue-600 text-white font-semibold py-3 px-4 rounded-xl hover:bg-blue-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                        {isLoading ? <><Loader size={18} className="animate-spin"/> Conectando...</> : 'Guardar y Cargar Datos'}
-                    </button>
+                    <div className="flex gap-3 mt-6">
+                        {onCancel && (
+                            <button 
+                                type="button" 
+                                onClick={onCancel}
+                                className="flex-1 bg-slate-200 text-slate-700 font-semibold py-3 px-4 rounded-xl hover:bg-slate-300 transition-all"
+                            >
+                                Cancelar
+                            </button>
+                        )}
+                        <button
+                            type="submit"
+                            disabled={isLoading}
+                            className="flex-1 bg-blue-600 text-white font-semibold py-3 px-4 rounded-xl hover:bg-blue-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                            {isLoading ? <><Loader size={18} className="animate-spin"/> Conectando...</> : 'Guardar y Cargar Datos'}
+                        </button>
+                    </div>
                 </form>
                 <p className="text-xs text-slate-400 mt-6">
                     Asegúrate de haber desplegado tu script con acceso para "Cualquier persona". La URL se guardará en tu navegador.
