@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
-  Activity, BarChart2, TrendingUp, MessageSquare, Loader, Egg, PieChart, ClipboardList, LogOut, FileSpreadsheet, FileText, Download, LayoutDashboard, Link2, AlertTriangle, Database
+  Activity, BarChart2, TrendingUp, MessageSquare, Loader, Egg, PieChart, ClipboardList, LogOut, FileSpreadsheet, FileText, Download, LayoutDashboard, Link2, AlertTriangle, Database, UserCircle
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
@@ -10,7 +10,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 
 import { calculateAllStats, calculateMonthlyAverages } from './utils/dataUtils';
 import { sendMessageToGemini } from './services/geminiService';
-import { EggData, ChartConfig, TabType, ChatMessageData, QualityStandardsConfig, MetricConfig } from './types';
+import { EggData, ChartConfig, TabType, ChatMessageData, QualityStandardsConfig, MetricConfig, UserProfile } from './types';
 import { ChartModal, MetricCard, SidebarItem, EggMonitorLogo, SidebarLogout } from './components/UI';
 import { DashboardChart, GaugeChart } from './components/Charts';
 import { ChatBox } from './components/ChatInterface';
@@ -32,17 +32,19 @@ const QUALITY_STANDARDS: QualityStandardsConfig = {
     haughUnits: { min: 40, max: 110, ranges: { poor: [40, 65], acceptable: [65, 90], optimal: [90, 110] } }
 };
 
-const AUTH_KEY = 'egg_monitor_auth';
+const AUTH_KEY = 'egg_monitor_credentials';
 const SHEET_URL_KEY = 'egg_monitor_sheet_url';
-const DEFAULT_ACCESS_CODE = 'Tic@8lava$';
 
 export default function App() {
     // Auth & Data State
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [authChecking, setAuthChecking] = useState(true);
+    const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+    const [credentials, setCredentials] = useState<{user: string, pass: string} | null>(null);
+    
     const [dashboardData, setDashboardData] = useState<EggData[]>([]);
     const [googleSheetUrl, setGoogleSheetUrl] = useState<string | null>(null);
-    const [isLoadingData, setIsLoadingData] = useState(true);
+    const [isLoadingData, setIsLoadingData] = useState(false);
     const [dataError, setDataError] = useState<string | null>(null);
     
     // Filtros
@@ -63,48 +65,96 @@ export default function App() {
     const [isExporting, setIsExporting] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // Initial Load
     useEffect(() => {
-        const storedAuth = localStorage.getItem(AUTH_KEY);
-        if (storedAuth === 'true') setIsAuthenticated(true);
-        setAuthChecking(false);
-
         const storedUrl = localStorage.getItem(SHEET_URL_KEY);
-        if (storedUrl) setGoogleSheetUrl(storedUrl); else setIsLoadingData(false);
+        if (storedUrl) setGoogleSheetUrl(storedUrl);
+
+        const storedCreds = localStorage.getItem(AUTH_KEY);
+        if (storedCreds && storedUrl) {
+            try {
+                const parsedCreds = JSON.parse(storedCreds);
+                // Attempt silent login / verification logic could go here
+                // For now, we trust storage but verify with the first data fetch
+                setCredentials(parsedCreds);
+                // We'll trigger the login verification via handleLogin logic reused
+                performLogin(parsedCreds.user, parsedCreds.pass, storedUrl, true);
+            } catch (e) {
+                setAuthChecking(false);
+            }
+        } else {
+            setAuthChecking(false);
+        }
     }, []);
     
-    // --- Data Fetching from Google Sheet ---
-    const fetchDataFromSheet = async (url: string) => {
+    const performLogin = async (user: string, pass: string, url: string, isAuto: boolean = false) => {
+        try {
+            // Construir URL con parámetros para Login
+            const loginUrl = `${url}?action=login&user=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`;
+            const response = await fetch(loginUrl);
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                const profile: UserProfile = {
+                    user: data.user,
+                    role: data.role === 'admin' ? 'admin' : 'cliente',
+                    assignedClient: data.assignedClient
+                };
+                setUserProfile(profile);
+                setCredentials({ user, pass });
+                setIsAuthenticated(true);
+                localStorage.setItem(AUTH_KEY, JSON.stringify({ user, pass }));
+                
+                // Si es exitoso, cargamos los datos inmediatamente
+                fetchDataFromSheet(url, { user, pass });
+                return { success: true };
+            } else {
+                if (isAuto) {
+                    // Si el auto-login falla, limpiamos
+                    handleLogout();
+                }
+                return { success: false, message: data.message };
+            }
+        } catch (error) {
+            console.error("Login error:", error);
+            if (isAuto) setAuthChecking(false);
+            return { success: false, message: "Error de conexión con el servidor." };
+        } finally {
+            if (isAuto) setAuthChecking(false);
+        }
+    };
+
+    // --- Data Fetching from Google Sheet (Secured) ---
+    const fetchDataFromSheet = async (url: string, creds: { user: string, pass: string }) => {
         setIsLoadingData(true);
         setDataError(null);
         try {
-            const response = await fetch(url);
+            // Enviamos credenciales para obtener datos filtrados
+            const dataUrl = `${url}?action=getData&user=${encodeURIComponent(creds.user)}&password=${encodeURIComponent(creds.pass)}`;
+            const response = await fetch(dataUrl);
             
             if (!response.ok) {
                  throw new Error(`Error HTTP ${response.status}`);
             }
 
-            // Intentamos obtener texto primero para diagnosticar errores HTML (común en Google Scripts mal configurados)
             const textData = await response.text();
             let data;
 
             try {
                 data = JSON.parse(textData);
             } catch (e) {
-                // Si falla el parseo, verificamos si es una página de error de Google
-                if (textData.includes("<!DOCTYPE html") || textData.includes("Google Drive") || textData.includes("Sign in")) {
-                    throw new Error("La URL devolvió una página de inicio de sesión de Google en lugar de datos JSON. Esto sucede cuando el script no está público. Asegúrate de configurar 'Quién tiene acceso' como 'Cualquier persona' (Anyone) en la implementación.");
+                 if (textData.includes("<!DOCTYPE html") || textData.includes("Google Drive")) {
+                    throw new Error("Error: Script no accesible. Verifica permisos 'Cualquier persona'.");
                 }
-                throw new Error("La respuesta recibida no es un JSON válido.");
+                throw new Error("Respuesta inválida del servidor.");
             }
 
-            // Verificar si el script devolvió un objeto de error explícito
-            if (data && !Array.isArray(data) && data.error) {
-                throw new Error(`Google Script Error: ${data.error}`);
+            if (data.status === 'error') {
+                throw new Error(data.message);
             }
 
             if (!Array.isArray(data)) {
-                 console.error("Data received:", data);
-                 throw new Error("Los datos recibidos no son una lista válida. Revisa que tu función doGet devuelva un JSON array.");
+                 throw new Error("Formato de datos incorrecto.");
             }
 
             const parsedData: EggData[] = data.map((row: any) => ({
@@ -124,41 +174,30 @@ export default function App() {
             
             setDashboardData(parsedData);
         } catch (error: any) {
-            console.error("Error fetching from Google Sheet:", error);
-            let message = error.message;
-            if (message === 'Failed to fetch') {
-                message = "No se pudo conectar con Google Sheets. Posibles causas: 1) URL incorrecta (debe terminar en /exec), 2) Permisos de script no configurados como 'Cualquier persona', 3) Bloqueo de CORS.";
-            }
-            setDataError(message);
+            console.error("Error fetching data:", error);
+            setDataError(error.message);
         } finally {
             setIsLoadingData(false);
         }
     };
-    
-    useEffect(() => {
-        if (googleSheetUrl) {
-            fetchDataFromSheet(googleSheetUrl);
-        }
-    }, [googleSheetUrl]);
 
     const handleUrlSave = (newUrl: string) => {
         localStorage.setItem(SHEET_URL_KEY, newUrl);
         setGoogleSheetUrl(newUrl);
-        setActiveTab('dashboard'); // Volver al dashboard al guardar
     };
 
-    const handleLogin = (password: string) => {
-        if (password === DEFAULT_ACCESS_CODE) {
-            localStorage.setItem(AUTH_KEY, 'true');
-            setIsAuthenticated(true);
-            return true;
-        }
-        return false;
+    const handleLoginSubmit = async (user: string, pass: string) => {
+        if (!googleSheetUrl) return { success: false, message: "URL no configurada" };
+        return await performLogin(user, pass, googleSheetUrl);
     };
 
     const handleLogout = () => {
         localStorage.removeItem(AUTH_KEY);
         setIsAuthenticated(false);
+        setUserProfile(null);
+        setCredentials(null);
+        setDashboardData([]);
+        setAuthChecking(false);
     };
 
     const handleDownloadPDF = async () => {
@@ -169,10 +208,7 @@ export default function App() {
         const originalStyleWidth = reportElement.style.width;
 
         try {
-            // Forzar ancho de escritorio para asegurar que los gráficos se rendericen en columnas (grid)
-            // y no apilados (versión móvil), lo que reduce la altura total y el tamaño visual en el PDF.
             reportElement.style.width = '1200px';
-
             const canvas = await html2canvas(reportElement, { 
                 scale: 2, 
                 useCORS: true, 
@@ -180,37 +216,29 @@ export default function App() {
                 logging: false,
                 windowWidth: 1200 
             });
-
-            // Restaurar estilo original
             reportElement.style.width = originalStyleWidth;
 
             const imgData = canvas.toDataURL('image/jpeg', 0.8);
-            
-            // Configuración A4
             const pdf = new jsPDF('p', 'mm', 'a4');
             const pdfWidth = 210;
             const pdfHeight = 297;
             const margin = 10;
             const contentWidth = pdfWidth - (2 * margin);
             const contentHeight = pdfHeight - (2 * margin);
-            
             const imgHeight = (canvas.height * contentWidth) / canvas.width;
             
             let heightLeft = imgHeight;
             let position = margin;
 
-            // Primera página
             pdf.addImage(imgData, 'JPEG', margin, position, contentWidth, imgHeight);
             heightLeft -= contentHeight;
 
-            // Páginas siguientes
             while (heightLeft > 0) {
-                position -= contentHeight; // Desplaza la imagen hacia arriba
+                position -= contentHeight; 
                 pdf.addPage();
                 pdf.addImage(imgData, 'JPEG', margin, position, contentWidth, imgHeight);
                 heightLeft -= contentHeight;
             }
-
             pdf.save(`Reporte_Calidad_Huevo_${new Date().toISOString().split('T')[0]}.pdf`);
         } catch (error) {
             console.error("Error al generar PDF:", error);
@@ -221,7 +249,7 @@ export default function App() {
         }
     };
 
-    // Derived State and Memos (no changes needed here)
+    // Derived State and Memos
     const FARMS = useMemo(() => ['Todos', ...Array.from(new Set(dashboardData.map(d => d.farm).filter(Boolean)))], [dashboardData]);
     const SHEDS = useMemo(() => ['Todos', ...Array.from(new Set(dashboardData.map(d => d.shed).filter(Boolean)))], [dashboardData]);
     const AGES = useMemo(() => ['Todos', ...Array.from(new Set(dashboardData.map(d => d.age).filter(Boolean)))], [dashboardData]);
@@ -282,14 +310,16 @@ export default function App() {
     
     // --- Render Logic ---
     if (authChecking) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader className="animate-spin text-blue-600" /></div>;
-    if (!isAuthenticated) return <LoginScreen onLogin={handleLogin} />;
+    
+    if (!isAuthenticated) return <LoginScreen onLogin={handleLoginSubmit} hasUrl={!!googleSheetUrl} onSetUrl={handleUrlSave} />;
 
     const renderContent = () => {
-        // Mostrar configuración si: No hay URL, hay Error, o el usuario seleccionó la pestaña 'datasource'
-        if (!googleSheetUrl || dataError || activeTab === 'datasource') {
+        // Mostrar configuración si: Error, o el usuario seleccionó la pestaña 'datasource'
+        // Si es Admin puede ver datasource, si es cliente no debería poder cambiar la fuente
+        if (dataError || (activeTab === 'datasource' && userProfile?.role === 'admin')) {
             return (
                 <DataSourceSetupScreen 
-                    onSave={handleUrlSave} 
+                    onSave={(url) => { handleUrlSave(url); if(credentials) fetchDataFromSheet(url, credentials); }} 
                     error={dataError} 
                     isLoading={isLoadingData} 
                     currentUrl={googleSheetUrl || ''} 
@@ -300,8 +330,8 @@ export default function App() {
         if (isLoadingData) {
             return <div className="flex-1 flex flex-col items-center justify-center text-slate-500">
                 <Loader className="animate-spin text-blue-600 mb-4" size={32}/>
-                <p className="font-medium">Cargando datos desde Google Sheets...</p>
-                <p className="text-xs">Esto puede tardar unos segundos.</p>
+                <p className="font-medium">Cargando datos seguros...</p>
+                <p className="text-xs">Verificando permisos y obteniendo registros.</p>
             </div>;
         }
         return (
@@ -319,7 +349,6 @@ export default function App() {
                             </button>
                         </header>
                         <div className="bg-white p-10 rounded-3xl shadow-2xl border border-slate-100" id="report-container">
-                             {/* ...Contenido del reporte sin cambios... */}
                              <div className="flex justify-between items-start border-b border-slate-200 pb-10 mb-8">
                                 <div className="flex items-center gap-6">
                                     <div className="p-4 bg-slate-50 rounded-2xl shadow-inner"><EggMonitorLogo size={60} /></div>
@@ -335,7 +364,10 @@ export default function App() {
                                 <div className="text-right space-y-1">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Parámetros de Filtrado</p>
                                     <p className="text-lg font-bold text-slate-800">{selectedFarm}</p>
-                                    <p className="text-sm font-medium text-slate-500">{selectedClient} • MQX: {selectedMetaqualix}</p>
+                                    <p className="text-sm font-medium text-slate-500">
+                                        {userProfile?.role === 'cliente' ? userProfile.assignedClient : selectedClient} 
+                                        {selectedMetaqualix !== 'Todos' && ` • MQX: ${selectedMetaqualix}`}
+                                    </p>
                                     <div className="inline-block mt-3 px-3 py-1 bg-green-50 text-green-700 text-xs font-bold rounded-lg border border-green-100">
                                         {filteredData.length} Muestras Verificadas
                                     </div>
@@ -379,14 +411,14 @@ export default function App() {
                                     </div>
                                 ))}
                             </div>
-                            <div className="mt-20 pt-10 border-t border-slate-100 flex justify-between items-center text-slate-400 text-[10px] font-bold uppercase tracking-widest"><p>© {new Date().getFullYear()} EggMonitor AI System - Confidencial</p><p>Generado por: Analista de Planta</p></div>
+                            <div className="mt-20 pt-10 border-t border-slate-100 flex justify-between items-center text-slate-400 text-[10px] font-bold uppercase tracking-widest"><p>© {new Date().getFullYear()} EggMonitor AI System - Confidencial</p><p>Generado por: Laboratorio</p></div>
                         </div>
                     </div>
                 )}
                 {activeTab === 'dashboard' && (
                      <div className="space-y-8">
                         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                            <div><h2 className="text-3xl font-bold text-slate-800 tracking-tight">Panel de Control</h2><p className="text-slate-500">Datos de Calidad desde Google Sheets</p></div>
+                            <div><h2 className="text-3xl font-bold text-slate-800 tracking-tight">Panel de Control</h2><p className="text-slate-500">Vista de {userProfile?.role === 'admin' ? 'Administrador' : userProfile?.assignedClient}</p></div>
                             <div className="flex gap-2">
                                 <button disabled className="flex items-center gap-2 bg-green-100 text-green-800 px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition-all cursor-not-allowed"><FileSpreadsheet size={18} />Carga desde Excel (deshabilitado)</button>
                             </div>
@@ -394,12 +426,19 @@ export default function App() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">{Object.keys(METRIC_CONFIG).map(key => (<MetricCard key={key} title={METRIC_CONFIG[key].name} value={globalAverages[key]} unit={METRIC_CONFIG[key].unit} icon={METRIC_CONFIG[key].icon} color={METRIC_CONFIG[key].color} data={filteredData} dataKey={key} onZoom={() => setZoomedChart({ title: METRIC_CONFIG[key].name, data: filteredData, dataKey: key, color: METRIC_CONFIG[key].color, type: 'line' })} />))}</div>
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                             <div className="flex items-center gap-2 mb-4 text-slate-800 font-bold"><Activity size={18} className="text-blue-600"/><h3>Filtros de Análisis</h3></div>
-                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">{/* ...Filtros sin cambios... */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
                                 <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Granja</label><select value={selectedFarm} onChange={(e) => setSelectedFarm(e.target.value)} className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">{FARMS.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
                                 <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Caseta</label><select value={selectedShed} onChange={(e) => setSelectedShed(e.target.value)} className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">{SHEDS.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
                                 <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Edad</label><select value={selectedAge} onChange={(e) => setSelectedAge(e.target.value)} className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">{AGES.map(a => <option key={a} value={a}>{a}</option>)}</select></div>
                                 <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Estirpe</label><select value={selectedBreed} onChange={(e) => setSelectedBreed(e.target.value)} className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">{BREEDS.map(b => <option key={b} value={b}>{b}</option>)}</select></div>
-                                <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Cliente</label><select value={selectedClient} onChange={(e) => setSelectedClient(e.target.value)} className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">{CLIENTS.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                                
+                                {/* Filtro CLIENTE: Solo visible para ADMIN */}
+                                {userProfile?.role === 'admin' ? (
+                                    <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Cliente</label><select value={selectedClient} onChange={(e) => setSelectedClient(e.target.value)} className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">{CLIENTS.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                                ) : (
+                                    <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Cliente</label><div className="w-full p-2 bg-slate-100 border border-slate-200 rounded-lg text-xs text-slate-500 font-medium truncate">{userProfile?.assignedClient}</div></div>
+                                )}
+                                
                                 <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">No. Metaqualix</label><select value={selectedMetaqualix} onChange={(e) => setSelectedMetaqualix(e.target.value)} className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">{METAQUALIX.map(m => <option key={String(m)} value={String(m)}>{String(m)}</option>)}</select></div>
                                 <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Desde</label><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs" /></div>
                                 <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Hasta</label><input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs" /></div>
@@ -418,10 +457,22 @@ export default function App() {
     return (
         <div className="flex flex-col md:flex-row min-h-screen bg-slate-50">
             <aside className="w-full md:w-64 bg-white border-r border-slate-200 p-6 flex flex-col">
-                <div className="flex items-center gap-3 mb-10 px-2">
+                <div className="flex items-center gap-3 mb-8 px-2">
                     <EggMonitorLogo size={40} />
                     <h1 className="text-xl font-bold text-slate-900 leading-tight">EggMonitor <span className="text-blue-600 block text-xs">AI ANALYTICS</span></h1>
                 </div>
+
+                {/* Info del Usuario */}
+                <div className="mb-6 px-4 py-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                        <UserCircle size={20} />
+                    </div>
+                    <div className="overflow-hidden">
+                        <p className="text-xs font-bold text-slate-800 truncate">{userProfile?.user}</p>
+                        <p className="text-[10px] text-slate-500 truncate uppercase tracking-wider">{userProfile?.role === 'admin' ? 'Administrador' : 'Cliente'}</p>
+                    </div>
+                </div>
+
                 <nav className="flex-grow space-y-1">
                     <SidebarItem icon={Activity} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
                     <SidebarItem icon={BarChart2} label="Histogramas" active={activeTab === 'histograms'} onClick={() => setActiveTab('histograms')} />
@@ -429,9 +480,13 @@ export default function App() {
                     <SidebarItem icon={FileText} label="Resumen de Datos" active={activeTab === 'summary'} onClick={() => setActiveTab('summary')} />
                     <SidebarItem icon={ClipboardList} label="Reporte de Calidad" active={activeTab === 'report'} onClick={() => setActiveTab('report')} />
                     <SidebarItem icon={MessageSquare} label="Consultas IA" active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} />
-                    <div className="pt-4 mt-4 border-t border-slate-100">
-                        <SidebarItem icon={Database} label="Fuente de Datos" active={activeTab === 'datasource'} onClick={() => setActiveTab('datasource')} />
-                    </div>
+                    
+                    {/* Solo el Admin puede ver la configuración de la fuente de datos */}
+                    {userProfile?.role === 'admin' && (
+                        <div className="pt-4 mt-4 border-t border-slate-100">
+                            <SidebarItem icon={Database} label="Fuente de Datos" active={activeTab === 'datasource'} onClick={() => setActiveTab('datasource')} />
+                        </div>
+                    )}
                 </nav>
                 <div className="pt-6 border-t border-slate-100">
                     <SidebarLogout onClick={handleLogout} />

@@ -1,6 +1,12 @@
 
 import { LucideIcon } from 'lucide-react';
 
+export interface UserProfile {
+  user: string;
+  role: 'admin' | 'cliente';
+  assignedClient: string;
+}
+
 export interface EggData {
   date: string;
   farm: string;
