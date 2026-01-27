@@ -164,27 +164,57 @@ export default function App() {
     const handleDownloadPDF = async () => {
         const reportElement = document.getElementById('report-container');
         if (!reportElement) return;
+        
         setIsExporting(true);
+        const originalStyleWidth = reportElement.style.width;
+
         try {
-            const canvas = await html2canvas(reportElement, { scale: 1.2, useCORS: true, backgroundColor: '#ffffff', logging: false });
-            const imgData = canvas.toDataURL('image/jpeg', 0.7); 
-            const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
-            const imgWidth = 210; 
-            const pageHeight = 297; 
-            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            // Forzar ancho de escritorio para asegurar que los gráficos se rendericen en columnas (grid)
+            // y no apilados (versión móvil), lo que reduce la altura total y el tamaño visual en el PDF.
+            reportElement.style.width = '1200px';
+
+            const canvas = await html2canvas(reportElement, { 
+                scale: 2, 
+                useCORS: true, 
+                backgroundColor: '#ffffff', 
+                logging: false,
+                windowWidth: 1200 
+            });
+
+            // Restaurar estilo original
+            reportElement.style.width = originalStyleWidth;
+
+            const imgData = canvas.toDataURL('image/jpeg', 0.8);
+            
+            // Configuración A4
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pdfWidth = 210;
+            const pdfHeight = 297;
+            const margin = 10;
+            const contentWidth = pdfWidth - (2 * margin);
+            const contentHeight = pdfHeight - (2 * margin);
+            
+            const imgHeight = (canvas.height * contentWidth) / canvas.width;
+            
             let heightLeft = imgHeight;
-            let position = 0;
-            pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-            heightLeft -= pageHeight;
-            while (heightLeft >= 0) {
-                position = heightLeft - imgHeight;
+            let position = margin;
+
+            // Primera página
+            pdf.addImage(imgData, 'JPEG', margin, position, contentWidth, imgHeight);
+            heightLeft -= contentHeight;
+
+            // Páginas siguientes
+            while (heightLeft > 0) {
+                position -= contentHeight; // Desplaza la imagen hacia arriba
                 pdf.addPage();
-                pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-                heightLeft -= pageHeight;
+                pdf.addImage(imgData, 'JPEG', margin, position, contentWidth, imgHeight);
+                heightLeft -= contentHeight;
             }
+
             pdf.save(`Reporte_Calidad_Huevo_${new Date().toISOString().split('T')[0]}.pdf`);
         } catch (error) {
             console.error("Error al generar PDF:", error);
+            if (reportElement) reportElement.style.width = originalStyleWidth;
             alert("Error al generar el PDF.");
         } finally {
             setIsExporting(false);
@@ -312,7 +342,7 @@ export default function App() {
                                 </div>
                             </div>
                             <div className="flex justify-center mb-10 border-b border-slate-50 pb-6">
-                                <h2 className="text-2xl font-bold tracking-tight select-none pointer-events-none">
+                                <h2 className="text-4xl font-extrabold tracking-tight select-none pointer-events-none">
                                     <span className="text-cyan-500">Egg</span><span className="text-yellow-400">Monitor</span>
                                 </h2>
                             </div>
