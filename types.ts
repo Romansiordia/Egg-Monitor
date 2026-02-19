@@ -1,6 +1,8 @@
 
 import { LucideIcon } from 'lucide-react';
 
+export type DataSourceType = 'live' | 'local';
+
 export interface UserProfile {
   user: string;
   role: 'admin' | 'cliente';
@@ -14,7 +16,7 @@ export interface EggData {
   age: string;
   breed: string;
   client?: string; 
-  metaqualixId?: string; // Nuevo campo para No. Metaqualix
+  metaqualixId?: string;
   weight: number;
   breakingStrength: number;
   shellThickness: number;
@@ -60,7 +62,7 @@ export interface FilterState {
   selectedAge: string;
   selectedBreed: string;
   selectedClient: string;
-  selectedMetaqualix: string; // Nuevo filtro en el estado
+  selectedMetaqualix: string;
   startDate: string;
   endDate: string;
   recordCount: number;

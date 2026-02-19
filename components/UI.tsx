@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+
+import React, { useEffect, useRef, useState } from 'react';
 import { 
-    X, CheckCircle, ZoomIn, ArrowUpRight, ArrowDownRight, Egg, LucideIcon, Upload, LogOut 
+    X, CheckCircle, ZoomIn, ArrowUpRight, ArrowDownRight, Egg, LucideIcon, Upload, LogOut, FileUp, FileSpreadsheet, Trash2
 } from 'lucide-react';
 import { 
     ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid 
@@ -10,23 +11,14 @@ import { ChartConfig, MetricConfig } from '../types';
 // --- Logo Component ---
 export const EggMonitorLogo: React.FC<{ size?: number }> = ({ size = 40 }) => (
     <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-        {/* Connector Lines (Nodos) */}
         <line x1="8" y1="52" x2="22" y2="52" stroke="#0F172A" strokeWidth="5" strokeLinecap="round" />
         <line x1="78" y1="52" x2="92" y2="52" stroke="#0F172A" strokeWidth="5" strokeLinecap="round" />
         <line x1="50" y1="86" x2="50" y2="96" stroke="#0F172A" strokeWidth="5" strokeLinecap="round" />
-
-        {/* Node Dots (Puntos extremos) */}
         <circle cx="8" cy="52" r="5" fill="#0F172A" />
         <circle cx="92" cy="52" r="5" fill="#0F172A" />
         <circle cx="50" cy="96" r="5" fill="#0F172A" />
-
-        {/* Egg Outline (Contorno del Huevo) */}
         <path d="M50 12 C72 12 78 34 78 52 C78 74 68 88 50 88 C32 88 22 74 22 52 C22 34 28 12 50 12 Z" stroke="#0F172A" strokeWidth="5" fill="white" />
-
-        {/* Yolk (Yema) */}
         <path d="M50 28 C62 28 64 40 64 52 C64 68 58 74 50 74 C42 74 36 68 36 52 C36 40 38 28 50 28 Z" fill="#F59E0B" />
-        
-        {/* Shine (Brillo) */}
         <ellipse cx="44" cy="40" rx="3" ry="5" transform="rotate(-30 44 40)" fill="white" fillOpacity="0.9" />
     </svg>
 );
@@ -84,20 +76,14 @@ export const ChartModal: React.FC<ChartModalProps> = ({ chartConfig, onClose, me
     const renderChart = () => {
         const currentXAxisKey = xAxisKey || 'date'; 
         const commonProps = { data, margin: { top: 20, right: 30, left: 20, bottom: 20 } };
-        
-        // Componente de Gráfico: BarChart para histograma/barras, LineChart para series de tiempo
         const ChartComponent = type === 'histogram' || type === 'bar' ? BarChart : LineChart;
         const DataComponent = type === 'histogram' || type === 'bar' ? Bar : Line;
-
-        // Determinar la clave de la métrica (si es histograma, la dataKey es 'count')
         const chartDataKey = type === 'histogram' ? 'count' : dataKey;
-        
-        // Determinar el título para el tooltip/leyenda
         const chartDataName = type === 'histogram' ? 'Conteo de Frecuencia' : (metricConfig[dataKey]?.name || title);
         const chartDataUnit = type === 'histogram' ? 'piezas' : (metricConfig[dataKey]?.unit || '');
 
         return (
-            // @ts-ignore - Recharts types can be tricky with dynamic components
+            // @ts-ignore
             <ChartComponent {...commonProps}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis 
@@ -210,27 +196,6 @@ export const MetricCard: React.FC<MetricCardProps> = ({ title, value, data, data
     );
 };
 
-// --- Count Card ---
-export const CountCard: React.FC<{ title: string; value: number; icon: LucideIcon; color: string }> = ({ title, value, icon: Icon, color }) => (
-    <div 
-        className="p-5 rounded-xl shadow-lg flex flex-col justify-center relative overflow-hidden group text-white"
-        style={{ backgroundColor: color }}
-    >
-        <div className="flex justify-between items-center mb-4">
-            <div className="p-3 rounded-lg bg-white/20 backdrop-blur-sm">
-                <Icon size={24} className="text-white" />
-            </div>
-        </div>
-        <div>
-            <h3 className="text-sm font-medium text-blue-50/90">{title}</h3>
-            <p className="text-3xl font-bold mt-1">
-                {value.toLocaleString()} 
-            </p>
-            <p className="text-xs text-blue-50/80 mt-1">Total de registros</p>
-        </div>
-    </div>
-);
-
 // --- Sidebar Item ---
 export const SidebarItem: React.FC<{ icon: LucideIcon; label: string; active: boolean; onClick: () => void }> = ({ icon: Icon, label, active, onClick }) => (
     <button 
@@ -256,3 +221,93 @@ export const SidebarLogout: React.FC<{ onClick: () => void }> = ({ onClick }) =>
         <span>Cerrar Sesión</span>
     </button>
 );
+
+// --- File Uploader ---
+interface FileUploaderProps {
+    onFileSelect: (file: File) => void;
+    isLoading?: boolean;
+    currentFileName?: string;
+    onClear: () => void;
+}
+
+export const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelect, isLoading, currentFileName, onClear }) => {
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isDragging, setIsDragging] = useState(false);
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = () => {
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragging(false);
+        const file = e.dataTransfer.files[0];
+        if (file && (file.name.endsWith('.csv') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) {
+            onFileSelect(file);
+        }
+    };
+
+    return (
+        <div className="space-y-4">
+            {!currentFileName ? (
+                <div 
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className={`border-2 border-dashed rounded-2xl p-10 flex flex-col items-center justify-center cursor-pointer transition-all ${
+                        isDragging ? 'border-blue-500 bg-blue-50' : 'border-slate-300 hover:border-blue-400 hover:bg-slate-50'
+                    }`}
+                >
+                    <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        className="hidden" 
+                        accept=".csv, .xlsx, .xls"
+                        onChange={(e) => e.target.files && onFileSelect(e.target.files[0])}
+                    />
+                    <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4">
+                        <FileUp size={32} />
+                    </div>
+                    <p className="text-slate-800 font-bold">Arrastra un archivo CSV o Excel</p>
+                    <p className="text-slate-500 text-sm mt-1">O haz clic para explorar en tu equipo</p>
+                    <div className="mt-4 flex gap-2">
+                        <span className="px-3 py-1 bg-slate-100 text-slate-500 text-xs font-bold rounded-md uppercase">CSV</span>
+                        <span className="px-3 py-1 bg-slate-100 text-slate-500 text-xs font-bold rounded-md uppercase">XLSX</span>
+                    </div>
+                </div>
+            ) : (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-green-100 text-green-600 rounded-xl flex items-center justify-center">
+                            <FileSpreadsheet size={24} />
+                        </div>
+                        <div>
+                            <p className="text-slate-900 font-bold">{currentFileName}</p>
+                            <p className="text-slate-500 text-xs uppercase tracking-wider font-bold">Archivo cargado correctamente</p>
+                        </div>
+                    </div>
+                    <button 
+                        onClick={onClear}
+                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    >
+                        <Trash2 size={20} />
+                    </button>
+                </div>
+            )}
+            
+            <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex gap-3">
+                <CheckCircle size={20} className="text-amber-600 shrink-0" />
+                <div className="text-xs text-amber-800">
+                    <p className="font-bold mb-1">Estructura esperada del archivo:</p>
+                    <p>Columnas sugeridas: Fecha, Granja, Caseta, Edad, Estirpe, Peso, Resistencia, Espesor, Color, Haugh.</p>
+                </div>
+            </div>
+        </div>
+    );
+};

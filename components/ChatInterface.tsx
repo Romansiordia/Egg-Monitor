@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { MessageSquare, Send, Loader, Egg } from 'lucide-react';
 import { ChatMessageData, FilterState, MetricConfig } from '../types';
@@ -54,7 +55,7 @@ export const ChatBox: React.FC<ChatBoxProps> = ({ chatHistory, onSubmit, isThink
             `${metricConfig[key].name}: ${averages[key]} ${metricConfig[key].unit}`
         ).join(', ');
 
-        const filterContext = `Filtros Aplicados: Granja: ${filters.selectedFarm}, Caseta: ${filters.selectedShed}, Edad: ${filters.selectedAge}, Estirpe: ${filters.selectedBreed}, Cliente: ${filters.selectedClient}. Rango de Fechas: ${new Date(filters.startDate).toLocaleDateString()} a ${new Date(filters.endDate).toLocaleDateString()}.`;
+        const filterContext = `Filtros Aplicados: Granja: ${filters.selectedFarm}, Caseta: ${filters.selectedShed}, Edad: ${filters.selectedAge}, Estirpe: ${filters.selectedBreed}, Cliente: ${filters.selectedClient}, Metaqualix: ${filters.selectedMetaqualix}. Rango de Fechas: ${new Date(filters.startDate).toLocaleDateString()} a ${new Date(filters.endDate).toLocaleDateString()}.`;
         const totalRecords = `Total de Piezas (Registros) en el contexto actual: ${filters.recordCount}.`;
 
         return `Contexto de Datos Actual:\n${filterContext}\n${totalRecords}\nPromedios Clave: ${avg}.`;
