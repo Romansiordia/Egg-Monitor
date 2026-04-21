@@ -75,16 +75,16 @@ export const ChartModal: React.FC<ChartModalProps> = ({ chartConfig, onClose, me
 
     const renderChart = () => {
         const currentXAxisKey = xAxisKey || 'date'; 
-        const commonProps = { data, margin: { top: 20, right: 30, left: 20, bottom: 20 } };
-        const ChartComponent = type === 'histogram' || type === 'bar' ? BarChart : LineChart;
-        const DataComponent = type === 'histogram' || type === 'bar' ? Bar : Line;
+        const commonProps = { 
+            data, 
+            margin: { top: 20, right: 30, left: 20, bottom: 20 } 
+        };
         const chartDataKey = type === 'histogram' ? 'count' : dataKey;
         const chartDataName = type === 'histogram' ? 'Conteo de Frecuencia' : (metricConfig[dataKey]?.name || title);
         const chartDataUnit = type === 'histogram' ? 'piezas' : (metricConfig[dataKey]?.unit || '');
 
-        return (
-            // @ts-ignore
-            <ChartComponent {...commonProps}>
+        const sharedComponents = (
+            <>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis 
                     dataKey={currentXAxisKey} 
@@ -106,18 +106,36 @@ export const ChartModal: React.FC<ChartModalProps> = ({ chartConfig, onClose, me
                     labelFormatter={(label: string) => currentXAxisKey === 'rangeLabel' ? `Rango: ${label}` : label}
                 />
                 <Legend />
-                <DataComponent 
-                    type={type === 'line' ? 'monotone' : undefined} 
+            </>
+        );
+
+        if (type === 'histogram' || type === 'bar') {
+            return (
+                <BarChart {...commonProps}>
+                    {sharedComponents}
+                    <Bar 
+                        dataKey={chartDataKey}
+                        fill={color}
+                        name={chartDataName}
+                        radius={[4, 4, 0, 0]}
+                    />
+                </BarChart>
+            );
+        }
+
+        return (
+            <LineChart {...commonProps}>
+                {sharedComponents}
+                <Line 
+                    type="monotone"
                     dataKey={chartDataKey}
-                    stroke={type === 'line' ? color : undefined} 
-                    fill={type !== 'line' ? color : undefined}
-                    strokeWidth={type === 'line' ? 3 : 0} 
-                    dot={type === 'line' ? false : undefined} 
-                    activeDot={type === 'line' ? { r: 8 } : undefined} 
+                    stroke={color}
+                    strokeWidth={3}
+                    dot={false}
+                    activeDot={{ r: 8 }}
                     name={chartDataName}
-                    radius={type !== 'line' ? [4, 4, 0, 0] as any : undefined}
                 />
-            </ChartComponent>
+            </LineChart>
         );
     };
 
