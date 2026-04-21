@@ -2,7 +2,7 @@
 import React from 'react';
 import { 
   LineChart, Line, BarChart, Bar, XAxis, YAxis, 
-  CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area 
+  CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area, AreaChart 
 } from 'recharts';
 import { Download, ZoomIn, TrendingUp } from 'lucide-react';
 import { getHistogramData } from '../utils/dataUtils';
@@ -22,54 +22,74 @@ interface DashboardChartProps {
     metricConfig: MetricConfig;
 }
 
-const AreaChartWithGradient = ({ data, dataKey, color, unit, name }: { data: any[], dataKey: string, color: string, unit: string, name: string }) => (
-    <ComposedChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-        <defs>
-            <linearGradient id={`color${dataKey}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={color} stopOpacity={0.2}/>
-                <stop offset="95%" stopColor={color} stopOpacity={0}/>
-            </linearGradient>
-        </defs>
+const MonthlyLineChart = ({ data, dataKey, color, unit, name }: { data: any[], dataKey: string, color: string, unit: string, name: string }) => (
+    <LineChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-        <XAxis dataKey="date" stroke="#94a3b8" tick={{fontSize: 10}} tickFormatter={(val) => val.split('-').slice(1).join('/')} tickLine={false} axisLine={false} dy={10} />
-        <YAxis stroke="#94a3b8" tick={{fontSize: 10}} domain={['auto', 'auto']} tickLine={false} axisLine={false} />
-        <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} itemStyle={{ color: color }} />
-        <Area type="monotone" dataKey={dataKey} stroke={color} fillOpacity={1} fill={`url(#color${dataKey})`} strokeWidth={2} name={name} unit={unit} />
-    </ComposedChart>
+        <XAxis 
+            dataKey="date" 
+            stroke="#94a3b8" 
+            tick={{fontSize: 10}} 
+            tickFormatter={(val) => {
+                if (!val) return '';
+                if (typeof val === 'string' && val.includes('-')) {
+                    const parts = val.split('-');
+                    return parts.length > 1 ? parts[1] : val;
+                }
+                return val;
+            }} 
+            tickLine={false} 
+            axisLine={false} 
+        />
+        <YAxis stroke="#94a3b8" tick={{fontSize: 10}} domain={['auto', 'auto']} tickLine={false} axisLine={false} width={30} />
+        <Tooltip 
+            contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} 
+            itemStyle={{ color: color }} 
+        />
+        <Line 
+            type="monotone" 
+            dataKey={dataKey} 
+            stroke={color} 
+            strokeWidth={3} 
+            name={name} 
+            unit={unit}
+            dot={{ r: 4, fill: color, strokeWidth: 2, stroke: '#fff' }}
+            activeDot={{ r: 6, strokeWidth: 0 }}
+        />
+    </LineChart>
 );
 
 export const DashboardChart: React.FC<DashboardChartProps> = ({ 
     title, data, dataKey, color, chartId, onDownload, scriptsReady, onZoom, type = 'line', unit, metricConfig 
 }) => {
     return (
-        <div id={chartId} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex flex-col">
-            <div className="flex justify-between items-center mb-6">
+        <div id={chartId} className="bg-white p-5 rounded-xl shadow-sm border border-slate-100 flex flex-col h-[350px] transition-all hover:shadow-md">
+            <div className="flex justify-between items-start mb-6">
                 <div>
-                    <h3 className="text-lg font-bold text-slate-800">{title}</h3>
-                    <p className="text-xs text-slate-400">Últimos datos registrados</p>
+                    <h3 className="text-base font-bold text-slate-800">{title}</h3>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{type === 'line' ? 'Evolución mensual' : 'Distribución'}</p>
                 </div>
-                <div className="flex gap-2">
-                    <button onClick={onZoom} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                        <ZoomIn size={18} />
+                <div className="flex gap-1">
+                    <button onClick={onZoom} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                        <ZoomIn size={16} />
                     </button>
                     <button 
                         onClick={() => onDownload(chartId, `${title.replace(/\s+/g, '-')}.pdf`)} 
                         disabled={!scriptsReady}
-                        className="p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-30"
+                        className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-30"
                     >
-                        <Download size={18} />
+                        <Download size={16} />
                     </button>
                 </div>
             </div>
-            <div className="flex-grow min-h-[250px]">
+            <div className="flex-grow w-full h-[220px]">
                 <ResponsiveContainer width="100%" height="100%">
                     {type === 'line' ? (
-                         <AreaChartWithGradient data={data} dataKey={dataKey} color={color} unit={unit || ''} name={metricConfig[dataKey]?.name} />
+                        <MonthlyLineChart data={data} dataKey={dataKey} color={color} unit={unit || ''} name={metricConfig[dataKey]?.name} />
                     ) : (
-                        <BarChart data={getHistogramData(data, dataKey)} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                        <BarChart data={getHistogramData(data, dataKey)} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                            <XAxis dataKey="range" stroke="#94a3b8" tick={{fontSize: 10}} tickLine={false} axisLine={false} dy={10} />
-                            <YAxis stroke="#94a3b8" tick={{fontSize: 10}} tickLine={false} axisLine={false} />
+                            <XAxis dataKey="range" stroke="#94a3b8" tick={{fontSize: 10}} tickLine={false} axisLine={false} />
+                            <YAxis stroke="#94a3b8" tick={{fontSize: 10}} tickLine={false} axisLine={false} width={30} />
                             <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                             <Bar dataKey="count" fill={color} radius={[4, 4, 0, 0]} name="Frecuencia" />
                         </BarChart>

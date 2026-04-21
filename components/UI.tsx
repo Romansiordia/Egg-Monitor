@@ -7,6 +7,7 @@ import {
     ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid 
 } from 'recharts';
 import { ChartConfig, MetricConfig } from '../types';
+import { getHistogramData } from '../utils/dataUtils';
 
 // --- Logo Component ---
 export const EggMonitorLogo: React.FC<{ size?: number }> = ({ size = 40 }) => (
@@ -75,8 +76,9 @@ export const ChartModal: React.FC<ChartModalProps> = ({ chartConfig, onClose, me
 
     const renderChart = () => {
         const currentXAxisKey = xAxisKey || 'date'; 
+        const chartData = type === 'histogram' ? getHistogramData(data, dataKey) : data;
         const commonProps = { 
-            data, 
+            data: chartData, 
             margin: { top: 20, right: 30, left: 20, bottom: 20 } 
         };
         const chartDataKey = type === 'histogram' ? 'count' : dataKey;
