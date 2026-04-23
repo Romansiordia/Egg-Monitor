@@ -14,7 +14,7 @@ export const sendMessageToGemini = async (
     dataContext: string
 ): Promise<{ text: string; sources: ChatSource[] }> => {
     // Inicializamos dentro de la función para asegurar que usamos la clave de API más reciente del entorno.
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
     try {
         const fullPrompt = `Basándote en el siguiente contexto de datos, responde mi pregunta.
