@@ -4,7 +4,7 @@ import {
     X, CheckCircle, ZoomIn, ArrowUpRight, ArrowDownRight, Egg, LucideIcon, Upload, LogOut, FileUp, FileSpreadsheet, Trash2
 } from 'lucide-react';
 import { 
-    ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid 
+    ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, Brush 
 } from 'recharts';
 import { ChartConfig, MetricConfig } from '../types';
 import { getHistogramData } from '../utils/dataUtils';
@@ -85,29 +85,80 @@ export const ChartModal: React.FC<ChartModalProps> = ({ chartConfig, onClose, me
         const chartDataName = type === 'histogram' ? 'Conteo de Frecuencia' : (metricConfig[dataKey]?.name || title);
         const chartDataUnit = type === 'histogram' ? 'piezas' : (metricConfig[dataKey]?.unit || '');
 
+        const monthsEs = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+        
+        const formatXAxis = (val: string) => {
+            if (!val) return '';
+            const datePart = val.split('T')[0];
+            const parts = datePart.split('-');
+            if (parts.length === 3) {
+                const day = parseInt(parts[2]);
+                const month = parseInt(parts[1]) - 1;
+                return `${day} ${monthsEs[month] || ''}`;
+            }
+            return val;
+        };
+
         const sharedComponents = (
             <>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis 
                     dataKey={currentXAxisKey} 
-                    stroke="#64748b" 
-                    tick={{fontSize: 12}} 
-                    tickFormatter={currentXAxisKey === 'date' ? (val: string) => val.split('-').slice(1).join('/') : undefined}
-                    angle={currentXAxisKey !== 'date' ? -45 : 0} 
-                    textAnchor={currentXAxisKey !== 'date' ? 'end' : 'middle'}
-                    height={currentXAxisKey !== 'date' ? 60 : 30}
+                    stroke="#94a3b8" 
+                    tick={{fontSize: 11, fill: '#64748b'}} 
+                    tickFormatter={currentXAxisKey === 'date' ? formatXAxis : undefined}
+                    angle={currentXAxisKey === 'date' ? 0 : -45} 
+                    textAnchor={currentXAxisKey === 'date' ? 'middle' : 'end'}
+                    height={60}
+                    interval="preserveStart"
+                    minTickGap={35}
+                    axisLine={{ stroke: '#e2e8f0' }}
+                    tickLine={false}
                 />
                 <YAxis 
-                    stroke="#64748b" 
+                    stroke="#94a3b8" 
                     domain={['auto', 'auto']} 
-                    tickFormatter={(t: number) => t.toFixed(type === 'line' ? 1 : 0)} 
+                    tick={{fontSize: 11, fill: '#64748b'}}
+                    tickFormatter={(tValue: number) => (tValue || 0).toFixed(type === 'line' ? 1 : 0)} 
+                    axisLine={false}
+                    tickLine={false}
                 />
                 <Tooltip 
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} 
+                    contentStyle={{ 
+                        borderRadius: '12px', 
+                        border: 'none', 
+                        boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
+                        padding: '12px'
+                    }} 
+                    labelFormatter={(label: any) => {
+                        if (currentXAxisKey === 'date' && label) {
+                            const datePart = String(label).split('T')[0];
+                            const parts = datePart.split('-');
+                            if (parts.length === 3) {
+                                return `${parts[2]} de ${monthsEs[parseInt(parts[1])-1]} de ${parts[0]}`;
+                            }
+                            return datePart;
+                        }
+                        return label;
+                    }}
                     formatter={(value: number) => [`${value.toFixed(type === 'line' ? 2 : 0)} ${chartDataUnit}`, chartDataName]}
-                    labelFormatter={(label: string) => currentXAxisKey === 'rangeLabel' ? `Rango: ${label}` : label}
                 />
-                <Legend />
+                <Legend 
+                    verticalAlign="top" 
+                    align="center" 
+                    height={36}
+                    iconType="circle"
+                    formatter={(value) => <span className="text-sm font-medium text-slate-600">{value}</span>}
+                />
+                {type === 'line' && (
+                    <Brush 
+                        dataKey={currentXAxisKey} 
+                        height={30} 
+                        stroke={color} 
+                        fill="#f8fafc"
+                        tickFormatter={formatXAxis}
+                    />
+                )}
             </>
         );
 
@@ -119,7 +170,8 @@ export const ChartModal: React.FC<ChartModalProps> = ({ chartConfig, onClose, me
                         dataKey={chartDataKey}
                         fill={color}
                         name={chartDataName}
-                        radius={[4, 4, 0, 0]}
+                        radius={[6, 6, 0, 0]}
+                        barSize={40}
                     />
                 </BarChart>
             );
@@ -133,26 +185,33 @@ export const ChartModal: React.FC<ChartModalProps> = ({ chartConfig, onClose, me
                     dataKey={chartDataKey}
                     stroke={color}
                     strokeWidth={3}
-                    dot={false}
-                    activeDot={{ r: 8 }}
+                    dot={{ r: 4, fill: color, strokeWidth: 2, stroke: '#fff' }}
+                    activeDot={{ r: 6, strokeWidth: 0 }}
                     name={chartDataName}
+                    animationDuration={1000}
                 />
             </LineChart>
         );
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
-            <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-5xl h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                <div className="flex justify-between items-center mb-6 border-b pb-4">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
+            <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-6xl h-[85vh] flex flex-col scale-in-center" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-start mb-8">
                     <div>
-                        <h3 className="text-2xl font-bold text-gray-800">{title}</h3>
-                        <p className="text-sm text-gray-500">Vista detallada y ampliada</p>
+                        <h3 className="text-3xl font-bold text-slate-800 tracking-tight">{title}</h3>
+                        <p className="text-slate-500 font-medium">Análisis detallado del parámetro seleccionado</p>
                     </div>
-                    <button onClick={onClose} className="bg-gray-100 p-2 rounded-full hover:bg-gray-200 transition-colors"><X size={24} /></button>
+                    <button 
+                        onClick={onClose} 
+                        className="bg-slate-100 p-3 rounded-2xl hover:bg-slate-200 transition-all group"
+                        title="Cerrar"
+                    >
+                        <X size={24} className="text-slate-500 group-hover:text-slate-800" />
+                    </button>
                 </div>
-                <div className="flex-grow w-full h-full">
-                     <ResponsiveContainer width="100%" height="100%">
+                <div className="flex-grow w-full overflow-hidden">
+                     <ResponsiveContainer width="100%" height="95%">
                         {renderChart()}
                      </ResponsiveContainer>
                 </div>

@@ -22,41 +22,47 @@ interface DashboardChartProps {
     metricConfig: MetricConfig;
 }
 
-const MonthlyLineChart = ({ data, dataKey, color, unit, name }: { data: any[], dataKey: string, color: string, unit: string, name: string }) => (
-    <LineChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
-        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-        <XAxis 
-            dataKey="date" 
-            stroke="#94a3b8" 
-            tick={{fontSize: 10}} 
-            tickFormatter={(val) => {
-                if (!val) return '';
-                if (typeof val === 'string' && val.includes('-')) {
-                    const parts = val.split('-');
-                    return parts.length > 1 ? parts[1] : val;
-                }
-                return val;
-            }} 
-            tickLine={false} 
-            axisLine={false} 
-        />
-        <YAxis stroke="#94a3b8" tick={{fontSize: 10}} domain={['auto', 'auto']} tickLine={false} axisLine={false} width={30} />
-        <Tooltip 
-            contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} 
-            itemStyle={{ color: color }} 
-        />
-        <Line 
-            type="monotone" 
-            dataKey={dataKey} 
-            stroke={color} 
-            strokeWidth={3} 
-            name={name} 
-            unit={unit}
-            dot={{ r: 4, fill: color, strokeWidth: 2, stroke: '#fff' }}
-            activeDot={{ r: 6, strokeWidth: 0 }}
-        />
-    </LineChart>
-);
+const MonthlyLineChart = ({ data, dataKey, color, unit, name }: { data: any[], dataKey: string, color: string, unit: string, name: string }) => {
+    const monthsEs = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    return (
+        <LineChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+            <XAxis 
+                dataKey="date" 
+                stroke="#94a3b8" 
+                tick={{fontSize: 9, fill: '#64748b'}} 
+                tickFormatter={(val) => {
+                    if (!val) return '';
+                    if (typeof val === 'string' && val.includes('-')) {
+                        const parts = val.split('-');
+                        if (parts.length >= 2) {
+                            const mIdx = parseInt(parts[1]) - 1;
+                            return monthsEs[mIdx] || parts[1];
+                        }
+                    }
+                    return val;
+                }} 
+                tickLine={false} 
+                axisLine={false} 
+            />
+            <YAxis stroke="#94a3b8" tick={{fontSize: 9, fill: '#64748b'}} domain={['auto', 'auto']} tickLine={false} axisLine={false} width={30} />
+            <Tooltip 
+                contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '11px' }} 
+                itemStyle={{ color: color }} 
+            />
+            <Line 
+                type="monotone" 
+                dataKey={dataKey} 
+                stroke={color} 
+                strokeWidth={2.5} 
+                name={name} 
+                unit={unit}
+                dot={{ r: 3, fill: color, strokeWidth: 1.5, stroke: '#fff' }}
+                activeDot={{ r: 5, strokeWidth: 0 }}
+            />
+        </LineChart>
+    );
+};
 
 export const DashboardChart: React.FC<DashboardChartProps> = ({ 
     title, data, dataKey, color, chartId, onDownload, scriptsReady, onZoom, type = 'line', unit, metricConfig 

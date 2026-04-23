@@ -17,11 +17,11 @@ export interface EggData {
   breed: string;
   client?: string; 
   metaqualixId?: string;
-  weight: number;
-  breakingStrength: number;
-  shellThickness: number;
-  yolkColor: number;
-  haughUnits: number;
+  weight: number | null;
+  breakingStrength: number | null;
+  shellThickness: number | null;
+  yolkColor: number | null;
+  haughUnits: number | null;
   [key: string]: string | number | null | undefined;
 }
 

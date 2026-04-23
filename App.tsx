@@ -62,8 +62,8 @@ export default function App() {
     const [selectedBreed, setSelectedBreed] = useState('Todos');
     const [selectedClient, setSelectedClient] = useState('Todos');
     const [selectedMetaqualix, setSelectedMetaqualix] = useState('Todos'); 
-    const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
-    const [startDate, setStartDate] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 29); return d.toISOString().split('T')[0]; });
+    const [endDate, setEndDate] = useState('2030-12-31');
+    const [startDate, setStartDate] = useState('2020-01-01');
     
     // UI State
     const [activeTab, setActiveTab] = useState<TabType>('dashboard'); 
@@ -152,7 +152,32 @@ export default function App() {
             if (data.status === 'error') throw new Error(data.message);
             if (!Array.isArray(data)) throw new Error("Formato de datos incorrecto.");
 
-            const parsedData: EggData[] = data.map((row: any) => mapToEggData(row)).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            // IMPROVED: Filter out definitively empty rows before mapping
+            const cleanData = data.filter((row: any) => {
+                const keys = Object.keys(row);
+                if (keys.length === 0) return false;
+                // Check if at least one meaningful field has a value
+                return keys.some(k => row[k] !== null && row[k] !== undefined && String(row[k]).trim() !== '');
+            });
+
+            const parsedData: EggData[] = cleanData.map((row: any) => mapToEggData(row))
+                .filter(d => d.date && d.farm !== 'N/A')
+                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+            // Update global range if needed to ensure all data is visible
+            if (parsedData.length > 0) {
+                const dates = parsedData.map(d => new Date(d.date).getTime());
+                const minD = Math.min(...dates);
+                const maxD = Math.max(...dates);
+                
+                const first = new Date(minD).toISOString().split('T')[0];
+                const last = new Date(maxD).toISOString().split('T')[0];
+                
+                // Only auto-expand if the current range is default or excludes data
+                if (startDate === '2020-01-01' || new Date(startDate).getTime() > minD) setStartDate(first);
+                if (endDate === '2030-12-31' || new Date(endDate).getTime() < maxD) setEndDate(last);
+            }
+
             setLiveData(parsedData);
         } catch (error: any) {
             console.error("Error fetching data:", error);
@@ -164,25 +189,93 @@ export default function App() {
 
     const mapToEggData = (row: any): EggData => {
         const getValue = (keys: string[]) => {
+            const rowKeys = Object.keys(row);
             for (const k of keys) {
+                // Try exact match, then trimmed, then case-insensitive trimmed
                 if (row[k] !== undefined && row[k] !== null) return row[k];
+                
+                const targetKey = k.toLowerCase().trim();
+                const actualKey = rowKeys.find(rk => rk.toLowerCase().trim() === targetKey);
+                if (actualKey !== undefined && row[actualKey] !== null) return row[actualKey];
             }
             return null;
         };
 
+        const rawDate = getValue(['Fecha', 'Date', 'fecha', 'Day', 'Día']);
+        let dateValue: string | null = null; 
+
+        if (rawDate) {
+            if (rawDate instanceof Date) {
+                dateValue = rawDate.toISOString();
+            } else if (typeof rawDate === 'number' && rawDate > 30000) {
+                const excelDate = new Date((rawDate - 25569) * 86400 * 1000);
+                dateValue = excelDate.toISOString();
+            } else if (typeof rawDate === 'string' && rawDate.trim() !== '') {
+                // Check if it's already ISO
+                if (/^\d{4}-\d{2}-\d{2}/.test(rawDate)) {
+                    const parsed = new Date(rawDate);
+                    if (!isNaN(parsed.getTime())) dateValue = parsed.toISOString();
+                } 
+                
+                if (!dateValue) {
+                    // Try to parse DD/MM/YYYY or MM/DD/YYYY
+                    const parts = rawDate.split(/[\/\s-]/).filter(p => p.trim() !== '');
+                    if (parts.length >= 3) {
+                        let d, m, y;
+                        if (parts[0].length === 4) { // YYYY-MM-DD
+                            [y, m, d] = parts;
+                        } else if (parts[2].length === 4) { // DD/MM/YYYY or MM/DD/YYYY
+                            [d, m, y] = parts;
+                            const val1 = parseInt(d);
+                            const val2 = parseInt(m);
+                            
+                            // If first val > 12, it MUST be the day (DD/MM/YYYY)
+                            // If second val > 12, it MUST be the day (MM/DD/YYYY)
+                            // Default to DD/MM/YYYY as it's common in Spanish locales
+                            if (val1 > 12) {
+                                // Already [d, m, y]
+                            } else if (val2 > 12) {
+                                [m, d] = [d, m];
+                            }
+                        }
+                        
+                        if (y && m && d) {
+                            const manualParsed = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+                            if (!isNaN(manualParsed.getTime())) {
+                                dateValue = manualParsed.toISOString();
+                            }
+                        }
+                    }
+                }
+
+                // If still no luck, try native
+                if (!dateValue) {
+                    const parsed = new Date(rawDate);
+                    if (!isNaN(parsed.getTime())) dateValue = parsed.toISOString();
+                }
+            }
+        }
+
+        const getNumber = (keys: string[]) => {
+            const val = getValue(keys);
+            if (val === null || val === undefined || val === '') return null;
+            const parsed = parseFloat(String(val));
+            return isNaN(parsed) ? null : parsed;
+        };
+
         return {
-            date: getValue(['Fecha', 'Date', 'fecha']) || new Date().toISOString().split('T')[0],
+            date: (dateValue || new Date().toISOString()) as any,
             farm: String(getValue(['Granja', 'Farm', 'granja']) || 'N/A'),
             shed: String(getValue(['Caseta', 'Shed', 'caseta']) || 'N/A'),
             age: String(getValue(['Edad', 'Age', 'edad']) || '0'),
             breed: String(getValue(['Estirpe', 'Breed', 'estirpe']) || 'N/A'),
             client: String(getValue(['Cliente', 'Client', 'cliente']) || 'General'),
             metaqualixId: String(getValue(['Metaqualix', 'MQX', 'id']) || 'N/A'),
-            weight: parseFloat(String(getValue(['Peso', 'Weight', 'peso']) || 0)),
-            breakingStrength: parseFloat(String(getValue(['Resistencia', 'Strength', 'resistencia']) || 0)),
-            shellThickness: parseFloat(String(getValue(['Espesor', 'Thickness', 'espesor']) || 0)),
-            yolkColor: parseFloat(String(getValue(['Color', 'Yolk', 'color']) || 0)),
-            haughUnits: parseFloat(String(getValue(['Haugh', 'HU', 'haugh']) || 0)),
+            weight: getNumber(['Peso', 'Weight', 'peso']),
+            breakingStrength: getNumber(['Resistencia', 'Strength', 'resistencia']),
+            shellThickness: getNumber(['Espesor', 'Thickness', 'espesor']),
+            yolkColor: getNumber(['Color', 'Yolk', 'color']),
+            haughUnits: getNumber(['Haugh', 'HU', 'haugh']),
         };
     };
 
@@ -192,12 +285,23 @@ export default function App() {
         reader.onload = (e) => {
             try {
                 const bstr = e.target?.result;
-                const workbook = XLSX.read(bstr, { type: 'binary' });
+                const workbook = XLSX.read(bstr, { type: 'binary', cellDates: true });
                 const firstSheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[firstSheetName];
-                const json = XLSX.utils.sheet_to_json(worksheet);
+                const json = XLSX.utils.sheet_to_json(worksheet, { defval: null });
                 
-                const parsedData = json.map(row => mapToEggData(row)).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                const parsedData = json.map(row => mapToEggData(row))
+                    .filter(d => d.date && d.farm !== 'N/A') // Ensure we have a valid date and meaningful content
+                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                
+                // Adjust date filters to show all info for local file
+                if (parsedData.length > 0) {
+                    const firstDate = parsedData[0].date.split('T')[0];
+                    const lastDate = parsedData[parsedData.length - 1].date.split('T')[0];
+                    setStartDate(firstDate);
+                    setEndDate(lastDate);
+                }
+
                 setLocalData(parsedData);
                 setLocalFileName(file.name);
                 setCurrentDataSource('local');
@@ -268,12 +372,9 @@ export default function App() {
     };
 
     const getFilteredDataForOptions = (excludeFilter: string | null) => {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
         return activeData.filter(d => {
-            const dDate = new Date(d.date);
-            return (dDate >= start && dDate <= end) &&
+            const dDatePart = d.date.split('T')[0];
+            return (dDatePart >= startDate && dDatePart <= endDate) &&
                    (excludeFilter === 'farm' || selectedFarm === 'Todos' || d.farm === selectedFarm) &&
                    (excludeFilter === 'shed' || selectedShed === 'Todos' || d.shed === selectedShed) &&
                    (excludeFilter === 'age' || selectedAge === 'Todos' || d.age === selectedAge) &&

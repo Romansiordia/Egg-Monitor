@@ -2,7 +2,8 @@
 import { EggData } from '../types';
 
 export const calculateAllStats = (data: EggData[], key: string) => {
-    const values = data.map(d => d[key]).filter((v): v is number => typeof v === 'number' && !isNaN(v));
+    // Treat 0 and negatives as invalid/missing for these quality parameters
+    const values = data.map(d => d[key]).filter((v): v is number => typeof v === 'number' && !isNaN(v) && v > 0);
     if (values.length === 0) return { mean: 0, std: 0, min: 0, max: 0 };
     const sum = values.reduce((acc, val) => acc + val, 0);
     const mean = sum / values.length;
@@ -13,7 +14,7 @@ export const calculateAllStats = (data: EggData[], key: string) => {
 };
 
 export const getHistogramData = (data: EggData[], key: string, bins = 12) => {
-    const values = data.map(d => d[key]).filter((v): v is number => typeof v === 'number' && !isNaN(v));
+    const values = data.map(d => d[key]).filter((v): v is number => typeof v === 'number' && !isNaN(v) && v > 0);
     if (values.length === 0) return [];
     const min = Math.min(...values); 
     const max = Math.max(...values);
@@ -35,30 +36,35 @@ export const getHistogramData = (data: EggData[], key: string, bins = 12) => {
 export const calculateMonthlyAverages = (data: EggData[], metricKeys: string[]) => {
     if (data.length === 0) return [];
     
+    // Grouped structure: { monthKey: { metric: { sum, count } } }
     const grouped: { [key: string]: any } = {};
     
     data.forEach(d => {
         const monthKey = d.date.substring(0, 7); // YYYY-MM
         if (!grouped[monthKey]) {
-            grouped[monthKey] = { count: 0, dateLabel: monthKey.replace('-', '/') };
-            metricKeys.forEach(key => { grouped[monthKey][key] = 0; });
+            grouped[monthKey] = { dateLabel: monthKey.replace('-', '/') };
+            metricKeys.forEach(key => { grouped[monthKey][key] = { sum: 0, count: 0 }; });
         }
-        grouped[monthKey].count++;
+        
         metricKeys.forEach(key => {
-            if (typeof d[key] === 'number') {
-                grouped[monthKey][key] += d[key] as number;
+            const val = d[key];
+            // Filter out 0 or invalid values
+            if (typeof val === 'number' && !isNaN(val) && val > 0) {
+                grouped[monthKey][key].sum += val;
+                grouped[monthKey][key].count++;
             }
         });
     });
     
     const averages = Object.keys(grouped).map(monthKey => {
-        const totalCount = grouped[monthKey].count;
+        const item = grouped[monthKey];
         const avg: any = { 
-            date: monthKey, // Usamos 'date' para compatibilidad con DashboardChart
-            dateLabel: grouped[monthKey].dateLabel 
+            date: monthKey, 
+            dateLabel: item.dateLabel 
         };
         metricKeys.forEach(key => {
-            avg[key] = totalCount > 0 ? parseFloat((grouped[monthKey][key] / totalCount).toFixed(2)) : 0;
+            const metric = item[key];
+            avg[key] = metric.count > 0 ? parseFloat((metric.sum / metric.count).toFixed(2)) : 0;
         });
         return avg;
     });
